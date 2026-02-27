@@ -21,3 +21,10 @@ export async function maToHtml(mdStr: string) {
     }
   )
 }
+
+export async function newArticleByStream(url: string) {
+  return fetcher(
+    `http://127.0.0.1:8000/articles/v1/url_stream?url=${url}`,
+    { method: 'POST' }
+  )
+}

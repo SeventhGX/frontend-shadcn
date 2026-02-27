@@ -4,28 +4,18 @@ import { ArticleDialog } from "@/app/mail/selectArticle"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
 import { addDays } from "date-fns"
 import { useState, useEffect } from "react"
 
-import { getArticleByDate, maToHtml } from "@/features/article/api"
+import { getArticleByDate } from "@/features/article/api"
 import { Recipient } from "@/app/mail/recipient"
 import MailView from "@/app/mail/mailView"
-import { ScanSearch, SendHorizontal } from "lucide-react"
+import { SendHorizontal } from "lucide-react"
 
 
 export default function MailPage() {
   const [mailContent, setMailContent] = useState<string>("")
   const [initialArticles, setInitialArticles] = useState<any[]>([])
-  const [previewHtml, setPreviewHtml] = useState<string>("")
-  const [isPreviewLoading, setIsPreviewLoading] = useState(false)
 
   // 获取本周周五作为默认值
   const getThisFriday = (): Date => {
@@ -47,9 +37,9 @@ export default function MailPage() {
   const handleAddToMail = (selectedArticles: any[]) => {
     const newContent = selectedArticles.map((article, index) =>
       `#### (${index + 1}) ${article.title}\n` +
-      `**关键词：**${article.key_words}\n` +
-      `**摘要：**${article.summary}\n` +
-      `**链接：**${article.url}\n\n`
+      `**关键词：** ${article.key_words}\n` +
+      `**摘要：** ${article.summary}\n` +
+      `**链接：** ${article.url}\n\n`
     ).join("")
     setMailContent(prev => prev + newContent)
   }
