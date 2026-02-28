@@ -93,22 +93,12 @@ export function AddArticle({ onArticleAdded, initialData }: AddArticleProps) {
       "url": url,
       "mail_date": mailDate ? format(mailDate, 'yyyy-MM-dd') : ''
     }
-    return JSON.stringify(formData) // 临时返回，替换为您的拼接逻辑
+    return JSON.stringify(formData, null, 2) // 格式化输出，每项后增加换行符和缩进
   }
 
   // 调用 API 保存文章
   const saveArticle = async () => {
     // TODO: 在这里实现 API 调用
-    // 示例：
-    // const response = await fetch('/api/articles', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({
-    //     title, keyWords, publishTime, url, summary, content,
-    //     mailDate: mailDate ? format(mailDate, 'yyyy-MM-dd') : ''
-    //   })
-    // })
-    // return response.json()
 
     // 模拟成功
     return Promise.resolve({ success: true })
