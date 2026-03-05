@@ -11,6 +11,7 @@ import { getArticleByDate } from "@/features/article/api"
 import { Recipient } from "@/app/mail/recipient"
 import MailView from "@/app/mail/mailView"
 import { SendHorizontal } from "lucide-react"
+import { AuthGuard } from "@/components/common/auth-guard"
 
 
 export default function MailPage() {
@@ -45,25 +46,27 @@ export default function MailPage() {
   }
 
   return (
-    <div className="flex flex-col flex-1 gap-1 min-h-0 mt-2">
-      <Recipient />
-      <Label htmlFor="mail" className="font-bold">编辑邮件(当前仅支持MD格式)</Label>
-      <Textarea
-        id="mail"
-        className="flex-1 resize-none min-h-0"
-        placeholder="正文"
-        value={mailContent}
-        onChange={(e) => setMailContent(e.target.value)}
-      />
-      <div className="flex mt-1">
-        <ArticleDialog articles={initialArticles} onAddToMail={handleAddToMail} />
-        <MailView mailContent={mailContent} />
-        <Button className="ml-2">
-          <SendHorizontal size={16} />
-          发送邮件
-        </Button>
+    <AuthGuard>
+      <div className="h-full flex flex-col gap-2 p-4 overflow-hidden">
+        <Recipient />
+        <Label htmlFor="mail" className="font-bold">编辑邮件(当前仅支持MD格式)</Label>
+        <Textarea
+          id="mail"
+          className="flex-1 resize-none min-h-0"
+          placeholder="正文"
+          value={mailContent}
+          onChange={(e) => setMailContent(e.target.value)}
+        />
+        <div className="flex gap-2 shrink-0">
+          <ArticleDialog articles={initialArticles} onAddToMail={handleAddToMail} />
+          <MailView mailContent={mailContent} />
+          <Button>
+            <SendHorizontal size={16} />
+            发送邮件
+          </Button>
+        </div>
       </div>
-    </div>
+    </AuthGuard>
   );
 }
 

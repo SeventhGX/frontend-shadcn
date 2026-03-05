@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { FileText, Send, Sparkle, ArrowUpDown } from "lucide-react"
 import { AddArticle } from "@/app/articles/addArticle"
+import { AuthGuard } from "@/components/common/auth-guard"
 
 export default function ArticlesPage() {
   const [url, setUrl] = useState("")
@@ -141,9 +142,10 @@ export default function ArticlesPage() {
   }
 
   return (
-    <div className="flex flex-col flex-1 gap-1 min-h-0 mt-2">
-      {/* 固定高度区域：输入框和按钮 */}
-      <div className="flex-none space-y-2">
+    <AuthGuard>
+      <div className="h-full flex flex-col flex-1 gap-2 p-4 overflow-hidden">
+        {/* 固定高度区域：输入框和按钮 */}
+        <div className="flex-none space-y-2">
         <div>
           <Label htmlFor="url" className="font-bold">文章 URL</Label>
           <Input
@@ -156,7 +158,7 @@ export default function ArticlesPage() {
           />
         </div>
 
-        <span className="flex gap-2">
+        <span className="flex gap-4">
           <Button
             onClick={handleSubmit}
             disabled={!url || isSubmitting}
@@ -169,7 +171,9 @@ export default function ArticlesPage() {
             initialData={content}
             onArticleAdded={(dataString) => {
               setContent(dataString)
-            }} />
+            }}
+            isSubmitting={isSubmitting}
+          />
         </span>
 
       </div>
@@ -209,5 +213,6 @@ export default function ArticlesPage() {
         )}
       </div>
     </div>
+    </AuthGuard>
   )
 }

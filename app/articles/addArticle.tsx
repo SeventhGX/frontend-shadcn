@@ -26,13 +26,15 @@ import { format } from "date-fns"
 import { FilePlus, CalendarIcon, ChevronDown, ChevronUp, Save } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { json } from "stream/consumers"
+import { newArticle } from "@/features/article/api"
 
 interface AddArticleProps {
   onArticleAdded?: (articleData: string) => void
   initialData?: string
+  isSubmitting?: boolean
 }
 
-export function AddArticle({ onArticleAdded, initialData }: AddArticleProps) {
+export function AddArticle({ onArticleAdded, initialData, isSubmitting }: AddArticleProps) {
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState("")
   const [keyWords, setKeyWords] = useState("")
@@ -98,10 +100,17 @@ export function AddArticle({ onArticleAdded, initialData }: AddArticleProps) {
 
   // 调用 API 保存文章
   const saveArticle = async () => {
-    // TODO: 在这里实现 API 调用
+    let response = await newArticle({
+      "title": title ? title : null,
+      "key_words": keyWords ? keyWords : null,
+      "publish_time": publishTime ? publishTime : null,
+      "content": content ? content : null,
+      "summary": summary ? summary : null,
+      "url": url ? url : null,
+      "mail_date": mailDate ? format(mailDate, 'yyyy-MM-dd') : null
+    })
 
-    // 模拟成功
-    return Promise.resolve({ success: true })
+    return response
   }
 
   // 提交表单
@@ -110,6 +119,11 @@ export function AddArticle({ onArticleAdded, initialData }: AddArticleProps) {
       // 简单验证
       if (!title.trim()) {
         toast.error('请输入标题')
+        return
+      }
+
+      if (!url.trim()) {
+        toast.error('请输入链接')
         return
       }
 
@@ -131,9 +145,9 @@ export function AddArticle({ onArticleAdded, initialData }: AddArticleProps) {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button>
+        <Button disabled={isSubmitting}>
           <Save className="h-4 w-4" />
-          保存文章
+          {isSubmitting ? "处理中..." : "保存文章"}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[90vw] max-w-[95vw] h-[90vh] flex flex-col p-6 gap-0">

@@ -28,3 +28,16 @@ export async function newArticleByStream(url: string) {
     { method: 'POST' }
   )
 }
+
+export async function newArticle(article_body: {}) {
+  return fetcher(
+    `http://127.0.0.1:8000/articles/v1/add_by_body`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(article_body),
+    }
+  )
+}
