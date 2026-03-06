@@ -3,6 +3,8 @@
  * 基于 JWT Bearer Token + OAuth2
  */
 
+import { getApiBaseUrl } from './fetcher'
+
 const TOKEN_KEY = 'auth_token'
 const USER_KEY = 'auth_user'
 
@@ -138,7 +140,7 @@ export function clearAuth(): void {
  * 登录 API
  */
 export async function login(credentials: LoginCredentials): Promise<LoginResponse> {
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
+  const API_BASE_URL = getApiBaseUrl()
 
   // OAuth2 password flow 通常使用 form-data 格式
   const formData = new URLSearchParams()
@@ -172,7 +174,7 @@ export async function login(credentials: LoginCredentials): Promise<LoginRespons
  */
 export async function logout(): Promise<void> {
   // 某些后端需要调用注销接口来使 token 失效
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
+  const API_BASE_URL = getApiBaseUrl()
   const token = getToken()
 
   if (token) {
@@ -200,7 +202,7 @@ export async function verifyToken(): Promise<boolean> {
   if (!token) return false
 
   try {
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
+    const API_BASE_URL = getApiBaseUrl()
 
     const response = await fetch(`${API_BASE_URL}/system/users/me`, {
       method: 'GET',
@@ -224,7 +226,7 @@ export async function getCurrentUser(): Promise<User> {
     throw new Error('未登录')
   }
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
+  const API_BASE_URL = getApiBaseUrl()
 
   const response = await fetch(`${API_BASE_URL}/system/users/me`, {
     method: 'GET',

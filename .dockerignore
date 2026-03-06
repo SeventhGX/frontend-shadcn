@@ -1,0 +1,55 @@
+# 依赖目录
+node_modules
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Next.js 构建输出
+.next
+out
+dist
+build
+
+# 环境变量文件
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 测试
+coverage
+.nyc_output
+
+# IDE 和编辑器
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# 文档和说明
+README.md
+docs
+*.md
+
+# 日志
+logs
+*.log
+
+# 其他
+.eslintcache
+.turbo

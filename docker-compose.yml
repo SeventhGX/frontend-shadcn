@@ -1,0 +1,43 @@
+services:
+  # Next.js 前端应用服务
+  # 注意：此配置连接到已存在的外部容器 app_backend
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: app_frontend:latest  # 自定义镜像名称和标签
+    container_name: app_frontend
+    restart: unless-stopped
+    environment:
+      # 后端 API 地址（连接到外部容器 app_backend）
+      # 注意：NEXT_PUBLIC_ 前缀的变量会在构建时嵌入到前端代码中
+      # 如果需要在浏览器中访问，使用公网地址或域名
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      
+      # 内部 API 地址（用于服务器端渲染时的 API 调用）
+      # 使用容器名称进行内部通信
+      INTERNAL_API_URL: ${INTERNAL_API_URL:-http://app_backend:8000}
+      
+      # Node 环境
+      NODE_ENV: ${NODE_ENV:-production}
+      
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    
+    # 使用默认 bridge 网络以连接到外部容器
+    network_mode: bridge
+    
+    # 添加外部容器的链接
+    external_links:
+      - app_backend
+    
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # 可选：如果需要持久化日志或其他数据
+    # volumes:
+    #   - ./logs:/app/logs
