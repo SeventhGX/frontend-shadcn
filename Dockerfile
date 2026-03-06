@@ -9,7 +9,7 @@ WORKDIR /app
 # 复制 package.json 和 lock 文件
 COPY package.json package-lock.json* ./
 # 安装所有依赖（包括 devDependencies，构建时需要）
-RUN npm ci --ignore-scripts || npm install --ignore-scripts
+RUN npm install --ignore-scripts
 
 # 第二阶段：构建应用
 FROM node:20-alpine AS builder
