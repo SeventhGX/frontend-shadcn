@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useAuth } from "@/app/providers"
 import { Button } from "@/components/ui/button"
 import { Home, LogOut, User } from "lucide-react"
+import { usePathname } from "next/navigation"
 
 /**
  * 全局顶部导航栏
@@ -11,6 +12,7 @@ import { Home, LogOut, User } from "lucide-react"
  */
 export function Navbar() {
   const { user, isAuthenticated, logout } = useAuth()
+  const pathname = usePathname()
 
   const handleLogout = async () => {
     try {
@@ -22,7 +24,7 @@ export function Navbar() {
 
   return (
     <nav className="w-full border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
-      <div className="flex h-14 items-center px-4 gap-4">
+      <div className="flex h-10 items-center px-4 gap-4">
         {/* 左侧：回到首页 */}
         <Link href="/">
           <Button variant="ghost" size="sm" className="gap-2">
@@ -35,26 +37,28 @@ export function Navbar() {
         <div className="ml-auto flex items-center gap-2">
           {isAuthenticated && user ? (
             <>
-              <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-secondary/50">
+              <div className="flex items-center gap-2 px-3 py-1 rounded-md">
                 <User size={14} />
-                <span className="text-sm font-medium">{user.user_code}</span>
+                <span className="text-sm font-medium">{user.user_code + ' ' + user.user_name}</span>
               </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={handleLogout}
                 className="gap-2"
               >
                 <LogOut size={16} />
-                注销
+                退出
               </Button>
             </>
           ) : (
             <Link href="/login">
-              <Button variant="default" size="sm" className="gap-2">
-                <User size={16} />
-                登录
-              </Button>
+              {pathname.startsWith("/login") ? null : (
+                <Button variant="default" size="sm" className="gap-2">
+                  <User size={16} />
+                  登录
+                </Button>
+              )}
             </Link>
           )}
         </div>

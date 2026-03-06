@@ -136,10 +136,8 @@ export function clearAuth(): void {
 
 /**
  * 登录 API
- * TODO: 根据实际后端 API 调整
  */
 export async function login(credentials: LoginCredentials): Promise<LoginResponse> {
-  // TODO: 替换为实际的后端 API 地址
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
 
   // OAuth2 password flow 通常使用 form-data 格式
@@ -171,7 +169,6 @@ export async function login(credentials: LoginCredentials): Promise<LoginRespons
 
 /**
  * 注销 API
- * TODO: 根据实际后端 API 调整（如果需要）
  */
 export async function logout(): Promise<void> {
   // 某些后端需要调用注销接口来使 token 失效
@@ -197,14 +194,12 @@ export async function logout(): Promise<void> {
 
 /**
  * 验证 Token 是否有效
- * TODO: 根据实际后端 API 调整
  */
 export async function verifyToken(): Promise<boolean> {
   const token = getToken()
   if (!token) return false
 
   try {
-    // TODO: 替换为实际的后端验证接口
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
 
     const response = await fetch(`${API_BASE_URL}/system/users/me`, {
@@ -222,7 +217,6 @@ export async function verifyToken(): Promise<boolean> {
 
 /**
  * 获取当前用户信息（从服务器）
- * TODO: 根据实际后端 API 调整
  */
 export async function getCurrentUser(): Promise<User> {
   const token = getToken()
@@ -230,7 +224,6 @@ export async function getCurrentUser(): Promise<User> {
     throw new Error('未登录')
   }
 
-  // TODO: 替换为实际的后端 API 地址
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
 
   const response = await fetch(`${API_BASE_URL}/system/users/me`, {

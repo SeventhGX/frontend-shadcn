@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { User, getUser, getToken, isAuthenticated, clearAuth, verifyToken, logout as logoutAPI } from '@/lib/auth'
+import { User, getUser, getToken, clearAuth, verifyToken, logout as logoutAPI } from '@/lib/auth'
 
 interface AuthContextType {
   user: User | null
@@ -28,10 +28,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const initAuth = async () => {
       const storedUser = getUser()
-      const token = getToken()
-      console.log(token, storedUser)
+      const storedToken = getToken()
+      console.log(storedToken, storedUser)
 
-      if (token && storedUser) {
+      if (storedToken && storedUser) {
         // 验证 token 是否仍然有效
         const isValid = await verifyToken()
         if (isValid) {

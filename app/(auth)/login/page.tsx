@@ -29,7 +29,7 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!username || !password) {
       toast.error("请输入用户名和密码")
       return
@@ -57,7 +57,7 @@ export default function LoginPage() {
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold">登录</CardTitle>
           <CardDescription>
-            输入您的凭据以访问系统
+            使用工号或姓名登录
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -67,7 +67,7 @@ export default function LoginPage() {
               <Input
                 id="username"
                 type="text"
-                placeholder="输入用户名"
+                placeholder="工号/姓名"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 disabled={isLoading}
@@ -79,16 +79,16 @@ export default function LoginPage() {
               <Input
                 id="password"
                 type="password"
-                placeholder="输入密码"
+                placeholder="密码"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={isLoading}
                 required
               />
             </div>
-            <Button 
-              type="submit" 
-              className="w-full gap-2" 
+            <Button
+              type="submit"
+              className="w-full gap-2"
               disabled={isLoading}
             >
               {isLoading ? (
@@ -104,9 +104,9 @@ export default function LoginPage() {
               )}
             </Button>
           </form>
-          <div className="mt-4 text-center text-sm text-muted-foreground">
+          {/* <div className="mt-4 text-center text-sm text-muted-foreground">
             提示：此登录页面基于 JWT Bearer Token + OAuth2 认证
-          </div>
+          </div> */}
         </CardContent>
       </Card>
     </div>
