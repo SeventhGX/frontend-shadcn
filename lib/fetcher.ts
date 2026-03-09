@@ -1,4 +1,3 @@
-import { useRouter } from 'next/navigation'
 import { getToken } from './auth'
 
 /**
@@ -8,7 +7,7 @@ import { getToken } from './auth'
 export function getApiBaseUrl(): string {
   // 在浏览器端，使用 NEXT_PUBLIC_API_URL 或 NEXT_PUBLIC_API_BASE_URL（向后兼容）
   if (typeof window !== 'undefined') {
-    return process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
+    return process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || '/api'
   }
   
   // 在服务器端，优先使用 INTERNAL_API_URL（用于容器间通信）

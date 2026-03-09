@@ -11,8 +11,8 @@ services:
     environment:
       # 后端 API 地址（连接到外部容器 app_backend）
       # 注意：NEXT_PUBLIC_ 前缀的变量会在构建时嵌入到前端代码中
-      # 如果需要在浏览器中访问，使用公网地址或域名
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      # 浏览器端默认走同源 /api，由 Next.js 服务端转发到后端容器
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
       
       # 内部 API 地址（用于服务器端渲染时的 API 调用）
       # 使用容器名称进行内部通信
