@@ -9,6 +9,21 @@ export async function getArticleByDate(date: Date | string) {
   )
 }
 
+
+export async function getArticleByBody(article_body: {}) {
+  return fetcher(
+    `/articles/v1/get_by_mail_body`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(article_body),
+    }
+  )
+}
+
+
 export async function maToHtml(mdStr: string) {
   return fetcher(
     `/articles/v1/md_to_html`,

@@ -19,7 +19,7 @@ import { addDays } from "date-fns"
 import { FilePlus } from "lucide-react"
 
 import SelectArticleDate from "@/components/common/selectArticleDate"
-import ArticleCard from "@/components/common/article"
+import { ArticleCardWithSelect } from "@/components/common/article"
 import { format } from "date-fns"
 
 import { getArticleByDate } from "@/features/article/api"
@@ -106,7 +106,7 @@ export function ArticleDialog({ articles: initialArticles, onAddToMail }: { arti
           <div className="flex-1 overflow-y-auto min-h-0 border-2 rounded-md p-2">
             <div className="space-y-4 pr-2">
               {articles.map((article, index) => (
-                <ArticleCard
+                <ArticleCardWithSelect
                   key={index}
                   title={article.title}
                   key_words={article.key_words}
