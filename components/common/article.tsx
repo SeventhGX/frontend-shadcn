@@ -57,8 +57,8 @@ export function ArticleCard(articleProps: ArticleCardProps) {
       </CardContent>
       <CardFooter>
         <div className="flex flex-col">
-          {articleProps.publish_time ? ` 发布时间: ${articleProps.publish_time}` : null}
-          {articleProps.real_mail_date ? ` 实际邮件发送时间: ${articleProps.real_mail_date} ` : null}
+          {articleProps.publish_time ? ` 发布时间: ${new Date(articleProps.publish_time).toLocaleString()}` : null}
+          {articleProps.real_mail_date ? ` 实际邮件发送时间: ${new Date(articleProps.real_mail_date).toLocaleString()} ` : null}
           <Link href={articleProps.url} target="_blank" className="text-blue-500">查看原文</Link>
         </div>
       </CardFooter>
