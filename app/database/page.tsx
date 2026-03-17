@@ -3,7 +3,8 @@
 import { AuthGuard } from "@/components/common/auth-guard"
 import { useState, useEffect } from "react"
 import { ArticleCard } from "@/components/common/article"
-import { getArticleByBody } from "@/features/article/api"
+import { addDays, format } from "date-fns"
+import { getArticleByBody, getArticleByDateRange } from "@/features/article/api"
 import {
   Sheet,
   SheetContent,
@@ -17,8 +18,9 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Search } from 'lucide-react';
+import { Search, } from 'lucide-react';
 import { DateRange } from "react-day-picker"
+import { DatePickerWithRange } from "@/components/common/selectDateRange"
 
 
 export default function DataPage() {
@@ -36,15 +38,27 @@ export default function DataPage() {
     to: undefined,
   })
 
-  useEffect(() => {
-    async function fetchArticles() {
-      const fetchedArticles = await getArticleByBody({
-      })
-      // console.log("Fetched articles:", fetchedArticles)
-      setArticles(fetchedArticles.data || [])
-    }
-    fetchArticles()
-  }, [])
+  async function onSearch() {
+    const fetchedArticles = await getArticleByDateRange({
+      publish_time_start: publishRange?.from ? format(publishRange.from, 'yyyy-MM-dd') + ' 00:00:00' : null,
+      publish_time_end: publishRange?.to ? format(publishRange.to, 'yyyy-MM-dd') + ' 23:59:59' : null,
+      mail_date_start: mailRange?.from ? format(mailRange.from, 'yyyy-MM-dd') : null,
+      mail_date_end: mailRange?.to ? format(mailRange.to, 'yyyy-MM-dd') : null,
+      real_mail_date_start: realMailRange?.from ? format(realMailRange.from, 'yyyy-MM-dd') : null,
+      real_mail_date_end: realMailRange?.to ? format(realMailRange.to, 'yyyy-MM-dd') : null,
+    })
+    setArticles(fetchedArticles.data || [])
+  }
+
+  // useEffect(() => {
+  //   async function fetchArticles() {
+  //     const fetchedArticles = await getArticleByBody({
+  //     })
+  //     // console.log("Fetched articles:", fetchedArticles)
+  //     setArticles(fetchedArticles.data || [])
+  //   }
+  //   fetchArticles()
+  // }, [])
 
   return (
     <AuthGuard>
@@ -66,21 +80,42 @@ export default function DataPage() {
               </SheetHeader>
               <div className="flex space-x-2 p-4">
                 <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="name" className="text-right">
+                  <Label htmlFor="publishRange" className="text-right">
                     新闻发布时间
                   </Label>
-                  <Input id="name" value="Pedro Duarte" className="col-span-3" />
+                  <DatePickerWithRange
+                    id="publishRange"
+                    className="w-40"
+                    date={publishRange}
+                    setDate={setPublishRange}
+                    placeholder="选择新闻发布时间范围" />
                 </div>
                 <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="username" className="text-right">
-                    Username
+                  <Label htmlFor="mailRange" className="text-right">
+                    预计邮件发送日期
                   </Label>
-                  <Input id="username" value="@peduarte" className="col-span-3" />
+                  <DatePickerWithRange
+                    id="mailRange"
+                    className="w-40"
+                    date={mailRange}
+                    setDate={setMailRange}
+                    placeholder="选择预计邮件发送日期范围" />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="realMailRange" className="text-right">
+                    实际邮件发送日期
+                  </Label>
+                  <DatePickerWithRange
+                    id="realMailRange"
+                    className="w-40"
+                    date={realMailRange}
+                    setDate={setRealMailRange}
+                    placeholder="选择实际邮件发送日期范围" />
                 </div>
               </div>
               <SheetFooter>
                 <SheetClose asChild>
-                  <Button type="submit">Save changes</Button>
+                  <Button type="submit" className="w-20" onClick={onSearch}>确定</Button>
                 </SheetClose>
               </SheetFooter>
             </SheetContent>
@@ -89,7 +124,7 @@ export default function DataPage() {
         </div>
 
         <div className="h-full flex flex-col gap-2 overflow-auto">
-          {articles.map((article, index) => (
+          {articles.length > 0 ? articles.map((article, index) => (
             <ArticleCard
               key={index}
               title={article.title}
@@ -100,7 +135,7 @@ export default function DataPage() {
               mail_date={article.mail_date}
               real_mail_date={article.real_mail_date}
             />
-          ))}
+          )) : <p className="text-center">请设置查询条件。</p>}
         </div>
       </div>
     </AuthGuard >

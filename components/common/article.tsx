@@ -11,6 +11,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
+import { addDays, format } from "date-fns"
 
 export function ArticleCardWithSelect({ title, key_words, summary, isSelected, setIsSelected }: { title: string, key_words: string, summary: string, isSelected: boolean, setIsSelected: React.Dispatch<React.SetStateAction<boolean>> }) {
   return (
@@ -57,8 +58,8 @@ export function ArticleCard(articleProps: ArticleCardProps) {
       </CardContent>
       <CardFooter>
         <div className="flex flex-col">
-          {articleProps.publish_time ? ` 发布时间: ${new Date(articleProps.publish_time).toLocaleString()}` : null}
-          {articleProps.real_mail_date ? ` 实际邮件发送时间: ${new Date(articleProps.real_mail_date).toLocaleString()} ` : null}
+          {articleProps.publish_time ? ` 发布时间: ${format(new Date(articleProps.publish_time), 'yyyy-MM-dd HH:mm:ss')}` : null}
+          {articleProps.real_mail_date ? ` 实际邮件发送时间: ${format(new Date(articleProps.real_mail_date), 'yyyy-MM-dd')} ` : null}
           <Link href={articleProps.url} target="_blank" className="text-blue-500">查看原文</Link>
         </div>
       </CardFooter>

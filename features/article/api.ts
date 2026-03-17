@@ -24,6 +24,20 @@ export async function getArticleByBody(article_body: {}) {
 }
 
 
+export async function getArticleByDateRange(date_range_body: {}) {
+  return fetcher(
+    `/articles/v1/get_by_date_range`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(date_range_body),
+    }
+  )
+}
+
+
 export async function maToHtml(mdStr: string) {
   return fetcher(
     `/articles/v1/md_to_html`,
