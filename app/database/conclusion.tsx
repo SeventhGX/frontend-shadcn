@@ -46,6 +46,12 @@ export function ConclusionDialog({
     setIsGenerating(true)
     setResult("")
 
+    if (!content.trim() || !roleCfg.trim()) {
+      toast.error("请完善输入内容")
+      setIsGenerating(false)
+      return
+    }
+
     try {
       const response = await chatByStream({
         role_cfg: roleCfg,
