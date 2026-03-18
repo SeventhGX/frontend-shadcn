@@ -27,6 +27,7 @@ import { FilePlus, CalendarIcon, ChevronDown, ChevronUp, Save } from "lucide-rea
 import { cn } from "@/lib/utils"
 import { json } from "stream/consumers"
 import { newArticle } from "@/features/article/api"
+import SelectArticleDate from "@/components/common/selectArticleDate"
 
 interface AddArticleProps {
   onArticleAdded?: (articleData: string) => void
@@ -207,7 +208,7 @@ export function AddArticle({ onArticleAdded, initialData, isSubmitting }: AddArt
             {/* 预计邮件发送日期 */}
             <div className="space-y-2">
               <Label>预计邮件发送日期</Label>
-              <Popover>
+              {/* <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant={"outline"}
@@ -228,7 +229,10 @@ export function AddArticle({ onArticleAdded, initialData, isSubmitting }: AddArt
                     initialFocus
                   />
                 </PopoverContent>
-              </Popover>
+              </Popover> */}
+              <SelectArticleDate
+                date={mailDate}
+                setDate={setMailDate} />
             </div>
 
             {/* 总结 - 可折叠 */}

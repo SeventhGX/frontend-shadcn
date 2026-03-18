@@ -48,12 +48,12 @@ export default function SelectArticleDate({ date, setDate }: { date: Date | unde
         <Button
           variant={"outline"}
           className={cn(
-            "w-70 justify-start text-left font-normal",
+            "w-full justify-start text-left font-normal",
             !date && "text-muted-foreground"
           )}
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
-          {date ? format(date, "PPP") : <span>选择文章日期</span>}
+          {date ? format(date, "yyyy-MM-dd") : <span>选择文章日期</span>}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="flex w-auto flex-col space-y-2 p-2">
@@ -65,7 +65,7 @@ export default function SelectArticleDate({ date, setDate }: { date: Date | unde
           }}
         >
           <SelectTrigger>
-            <SelectValue placeholder="选择文章日期" />
+            <SelectValue placeholder="快捷选择" />
           </SelectTrigger>
           <SelectContent position="popper">
             <SelectItem value="0">本周</SelectItem>
