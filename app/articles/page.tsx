@@ -81,7 +81,7 @@ export default function ArticlesPage() {
               // 根据字段类型更新对应的状态
               if (data.reasoning_content !== undefined) {
                 setReasoningContent(prev => prev + data.reasoning_content)
-                console.log('Received reasoning_content:', data.reasoning_content)
+                // console.log('Received reasoning_content:', data.reasoning_content)
               }
 
               if (data.content !== undefined) {

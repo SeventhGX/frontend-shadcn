@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label"
 import { Search, } from 'lucide-react';
 import { DateRange } from "react-day-picker"
 import { DatePickerWithRange } from "@/components/common/selectDateRange"
+import { ConclusionDialog } from "@/app/database/conclusion"
 
 
 export default function DataPage() {
@@ -37,6 +38,7 @@ export default function DataPage() {
     from: undefined,
     to: undefined,
   })
+  const [content, setContent] = useState("")
 
   async function onSearch() {
     const fetchedArticles = await getArticleByDateRange({
@@ -48,6 +50,11 @@ export default function DataPage() {
       real_mail_date_end: realMailRange?.to ? format(realMailRange.to, 'yyyy-MM-dd') : null,
     })
     setArticles(fetchedArticles.data || [])
+    setContent(fetchedArticles.data.map((article: any, index: number) =>
+      `\n(${index + 1}) ${article.title}\n` +
+      `关键词：${article.key_words}\n` +
+      `摘要：${article.summary}\n`
+    ).join(""))
   }
 
   // useEffect(() => {
@@ -67,7 +74,7 @@ export default function DataPage() {
           <Sheet key="top">
             <SheetTrigger asChild>
               <Button variant="outline">
-                <Search size={16} />
+                <Search className="h-4 w-4" />
                 查询
               </Button>
             </SheetTrigger>
@@ -120,7 +127,7 @@ export default function DataPage() {
               </SheetFooter>
             </SheetContent>
           </Sheet>
-
+          <ConclusionDialog content={content} setContent={setContent} />
         </div>
 
         <div className="h-full flex flex-col gap-2 overflow-auto">
@@ -135,7 +142,7 @@ export default function DataPage() {
               mail_date={article.mail_date}
               real_mail_date={article.real_mail_date}
             />
-          )) : <p className="text-center">请设置查询条件。</p>}
+          )) : <p className="text-center my-auto">当前无数据。</p>}
         </div>
       </div>
     </AuthGuard >
