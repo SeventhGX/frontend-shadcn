@@ -7,10 +7,10 @@ set -e
 echo "🔄 更新并重新部署前端应用..."
 
 # 拉取最新代码（如果使用 Git）
-if [ -d .git ]; then
-    echo "📥 拉取最新代码..."
-    git pull
-fi
+# if [ -d .git ]; then
+#     echo "📥 拉取最新代码..."
+#     git pull
+# fi
 
 # 重新构建镜像
 echo "📦 重新构建 Docker 镜像..."
