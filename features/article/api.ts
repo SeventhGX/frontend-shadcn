@@ -71,6 +71,19 @@ export async function chatByStream(body: {}) {
   )
 }
 
+export async function searchByStream(body: {}) {
+  return fetcher(
+    `/articles/v1/search_stream`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    }
+  )
+}
+
 export async function newArticle(article_body: {}) {
   return fetcher(
     `/articles/v1/add_by_body`,
