@@ -6,6 +6,9 @@ export default function Home() {
     <div className="h-full w-screen flex flex-col items-center justify-center p-8">
       <h1 className="text-4xl font-bold mb-8">并没有做完也并不知道有多AI的应用平台</h1>
       <div className="flex gap-4 border rounded-lg py-2 px-4">
+        <Link href="/chat" target="_blank">
+          <Button size="lg">AI对话</Button>
+        </Link>
         <Link href="/search" target="_blank">
           <Button size="lg">集成搜索</Button>
         </Link>
