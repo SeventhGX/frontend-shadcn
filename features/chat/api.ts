@@ -22,11 +22,11 @@ export interface ChatRequestMessage {
 }
 
 export interface ChatRequest {
-  id?: string | null,
-  session_name?: string | null,
-  model_type?: string | null,
+  id?: string | null
+  session_name?: string | null
+  model_type?: string | null
   model: string
-  content: ChatRequestMessage[]
+  content: { messages: ChatRequestMessage[] }
 }
 
 /**

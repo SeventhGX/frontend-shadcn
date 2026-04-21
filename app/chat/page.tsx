@@ -40,6 +40,7 @@ export default function ChatPage() {
   const [selectedModel, setSelectedModel] = useState("")
   const [isStreaming, setIsStreaming] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const isComposingRef = useRef(false) // 记录输入法候选状态
 
   // 历史会话侧边栏状态
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -143,9 +144,13 @@ export default function ChatPage() {
         { role: userMessage.role, content: userMessage.content },
       ]
 
+      const selectedModelType =
+        models.find((m) => m.model === selectedModel)?.modelType
+
       const response = await chatByStream({
         model: selectedModel,
-        content: conversationMessages,
+        model_type: selectedModelType,
+        content: { messages: conversationMessages },
       })
 
       const reader = response.body?.getReader()
@@ -178,7 +183,6 @@ export default function ChatPage() {
           try {
             const data = JSON.parse(jsonStr)
 
-            // TODO: 根据后端返回的字段名调整（当前解析 data.content）
             if (data.content !== undefined) {
               setMessages((prev) => {
                 const updated = [...prev]
@@ -187,6 +191,18 @@ export default function ChatPage() {
                   updated[updated.length - 1] = {
                     ...last,
                     content: last.content + data.content,
+                  }
+                }
+                return updated
+              })
+            } else if (data.reasoning_content !== undefined) {
+              setMessages((prev) => {
+                const updated = [...prev]
+                const last = updated[updated.length - 1]
+                if (last && last.role === "assistant") {
+                  updated[updated.length - 1] = {
+                    ...last,
+                    reasoning: (last.reasoning ?? "") + data.reasoning_content,
                   }
                 }
                 return updated
@@ -218,7 +234,15 @@ export default function ChatPage() {
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter 发送，Shift+Enter 换行
-    if (e.key === "Enter" && !e.shiftKey) {
+    // 中文输入法候选期间的 Enter 不触发发送
+    // （部分浏览器在 IME 中 e.key 为 "Process" 或 keyCode 为 229）
+    if (
+      e.key === "Enter" &&
+      !e.shiftKey &&
+      !e.nativeEvent.isComposing &&
+      !isComposingRef.current &&
+      e.keyCode !== 229
+    ) {
       e.preventDefault()
       handleSend()
     }
@@ -369,6 +393,8 @@ export default function ChatPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
+            onCompositionStart={() => (isComposingRef.current = true)}
+            onCompositionEnd={() => (isComposingRef.current = false)}
             placeholder="输入消息，Enter 发送，Shift+Enter 换行"
             className="min-h-15 max-h-36 resize-none"
             disabled={isStreaming}
