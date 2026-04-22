@@ -82,3 +82,56 @@ export async function getChatSessionById(sessionId: string) {
     { method: 'GET' }
   )
 }
+
+/**
+ * 新增会话
+ */
+export interface AddSessionRequest {
+  id?: string | null
+  session_name?: string | null
+  model_type?: string | null
+  model?: string | null
+  content?: { messages: ChatRequestMessage[] } | null
+  create_time?: string | null
+}
+
+export interface SessionData {
+  id: string
+  user_id?: string
+  session_name: string
+  create_time?: string
+  content?: { messages: ChatRequestMessage[] } | null
+}
+
+export async function addSession(body: AddSessionRequest): Promise<{ data: SessionData }> {
+  return fetcher(
+    `/ai/v1/add_session`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  )
+}
+
+/**
+ * 更新会话
+ */
+export interface UpdateSessionRequest {
+  id: string
+  user_id?: string
+  session_name: string
+  create_time?: string | null
+  content?: { messages: ChatRequestMessage[] } | null
+}
+
+export async function updateSession(body: UpdateSessionRequest): Promise<{ data: SessionData }> {
+  return fetcher(
+    `/ai/v1/update_session`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  )
+}

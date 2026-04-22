@@ -29,6 +29,8 @@ import {
   getModels,
   getChatSessions,
   getChatSessionById,
+  addSession,
+  updateSession,
   type ChatSession,
   type ModelItem,
 } from "@/features/chat/api"
@@ -39,8 +41,15 @@ export default function ChatPage() {
   const [models, setModels] = useState<ModelItem[]>([])
   const [selectedModel, setSelectedModel] = useState("")
   const [isStreaming, setIsStreaming] = useState(false)
+  // 当前会话信息（新建会话时由后端返回 id 与 session_name）
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
+  const [currentSessionName, setCurrentSessionName] = useState<string>("")
+  // 从历史加载的消息数量，用于在其后渲染分隔线，区分历史会话与新内容
+  const [historyCount, setHistoryCount] = useState(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const isComposingRef = useRef(false) // 记录输入法候选状态
+  // 保存最新的 messages，供流式结束后同步会话使用（避免在 setState updater 中执行副作用）
+  const messagesRef = useRef<ChatMessage[]>([])
 
   // 历史会话侧边栏状态
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -67,8 +76,9 @@ export default function ChatPage() {
     return acc
   }, {})
 
-  // 每次消息更新后自动滚动到底部
+  // 每次消息更新后自动滚动到底部，同时同步 ref
   useEffect(() => {
+    messagesRef.current = messages
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
@@ -102,6 +112,10 @@ export default function ChatPage() {
         modelName: m.role === "assistant" ? detail.model : undefined,
       }))
       setMessages(loaded)
+      setHistoryCount(loaded.length)
+      // 同步当前会话 id 与标题
+      setCurrentSessionId(session.id)
+      setCurrentSessionName(session.session_name || "")
       // 同步模型选择（若当前列表包含该模型）
       if (models.some((m) => m.model === detail.model)) {
         setSelectedModel(detail.model)
@@ -229,6 +243,40 @@ export default function ChatPage() {
       })
     } finally {
       setIsStreaming(false)
+
+      // 流式传输完成后，同步会话到后台
+      // 从 ref 读最新 messages，避免在 setState updater 里发请求（Strict Mode 会重复调用）
+      const finalMessages = messagesRef.current.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }))
+      const selectedModelType =
+        models.find((m) => m.model === selectedModel)?.modelType
+
+      if (!currentSessionId) {
+        // 新建会话：调用 add_session 获取 id 与名称
+        addSession({
+          session_name: userContent.slice(0, 30),
+          model: selectedModel,
+          model_type: selectedModelType,
+          content: { messages: finalMessages },
+        })
+          .then((res) => {
+            const data = res.data
+            if (data?.id) {
+              setCurrentSessionId(data.id)
+              setCurrentSessionName(data.session_name || "")
+            }
+          })
+          .catch((err) => console.error("新建会话失败:", err))
+      } else {
+        // 已有会话：调用 update_session 更新内容
+        updateSession({
+          id: currentSessionId,
+          session_name: currentSessionName,
+          content: { messages: finalMessages },
+        }).catch((err) => console.error("更新会话失败:", err))
+      }
     }
   }
 
@@ -251,13 +299,17 @@ export default function ChatPage() {
   const clearMessages = () => {
     if (isStreaming) return
     setMessages([])
+    // 清空对话视为开启新会话
+    setCurrentSessionId(null)
+    setCurrentSessionName("")
+    setHistoryCount(0)
   }
 
   return (
     <AuthGuard>
       <div className="h-full flex flex-col gap-2 p-4 overflow-hidden">
         {/* 顶部工具栏：模型选择 */}
-        <div className="flex-none flex items-center gap-3">
+        <div className="flex-none flex items-center gap-3 relative">
           {/* 历史会话侧边栏 */}
           <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
             <SheetTrigger asChild>
@@ -345,6 +397,13 @@ export default function ChatPage() {
             </SelectContent>
           </Select>
 
+          {/* 居中显示当前会话标题 */}
+          <div className="absolute left-1/2 -translate-x-1/2 max-w-[40%] pointer-events-none">
+            <p className="text-sm font-medium truncate text-center" title={currentSessionName}>
+              {currentSessionName || "新会话"}
+            </p>
+          </div>
+
           <Button
             variant="ghost"
             size="sm"
@@ -368,21 +427,32 @@ export default function ChatPage() {
               </p>
             </div>
           ) : (
-            messages.map((msg, index) => (
-              <Message
-                key={msg.id}
-                message={msg}
-                // 最后一条 assistant 消息且正在流式生成时显示加载动画
-                isStreaming={
-                  isStreaming &&
-                  index === messages.length - 1 &&
-                  msg.role === "assistant"
-                }
-              />
-            ))
+            <>
+              {messages.map((msg, index) => (
+                <div key={msg.id} className="space-y-4">
+                  <Message
+                    message={msg}
+                    // 最后一条 assistant 消息且正在流式生成时显示加载动画
+                    isStreaming={
+                      isStreaming &&
+                      index === messages.length - 1 &&
+                      msg.role === "assistant"
+                    }
+                  />
+                  {/* 历史会话末尾的分隔线，区分历史与后续新内容 */}
+                  {historyCount > 0 && index === historyCount - 1 && (
+                    <div className="flex items-center gap-3 px-2">
+                      <Separator className="flex-1" />
+                      <span className="text-xs text-muted-foreground shrink-0">以上为历史会话</span>
+                      <Separator className="flex-1" />
+                    </div>
+                  )}
+                </div>
+              ))}
+              {/* 用于自动滚动到底部的锚点 */}
+              <div ref={messagesEndRef} />
+            </>
           )}
-          {/* 用于自动滚动到底部的锚点 */}
-          <div ref={messagesEndRef} />
         </div>
 
         <Separator />
