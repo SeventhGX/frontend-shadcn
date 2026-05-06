@@ -1,8 +1,20 @@
 import { fetcher } from '@/lib/fetcher'
 
+export type ModelKwargType = 'string' | 'number' | 'integer' | 'boolean'
+
+export interface ModelKwarg {
+  name: string
+  type: ModelKwargType
+  default: string | number | boolean
+  min?: number
+  max?: number
+  option?: string[]
+}
+
 export interface ModelItem {
   modelType: string
   model: string
+  kwargs?: ModelKwarg[]
 }
 
 /*
@@ -27,6 +39,7 @@ export interface ChatRequest {
   model_type?: string | null
   model: string
   content: { messages: ChatRequestMessage[] }
+  kwargs?: Record<string, string | number | boolean>
 }
 
 /**
