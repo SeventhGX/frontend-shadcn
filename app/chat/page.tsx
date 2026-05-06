@@ -1,11 +1,24 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Send, Bot, Trash2, History, Clock, LoaderCircle } from "lucide-react"
+import {
+  Send,
+  Bot,
+  Trash2,
+  History,
+  Clock,
+  LoaderCircle,
+  Settings2,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+import { Slider } from "@/components/ui/slider"
+import { Switch } from "@/components/ui/switch"
+import { cn } from "@/lib/utils"
 import {
   Select,
   SelectContent,
@@ -33,7 +46,18 @@ import {
   updateSession,
   type ChatSession,
   type ModelItem,
+  type ModelKwarg,
 } from "@/features/chat/api"
+
+type ParamValue = string | number | boolean
+
+function buildDefaults(kwargs: ModelKwarg[] | undefined): Record<string, ParamValue> {
+  const out: Record<string, ParamValue> = {}
+  ;(kwargs ?? []).forEach((k) => {
+    out[k.name] = k.default
+  })
+  return out
+}
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -57,7 +81,13 @@ export default function ChatPage() {
   const [sessionsLoading, setSessionsLoading] = useState(false)
   const [sessionDetailLoading, setSessionDetailLoading] = useState<string | null>(null) // 正在加载的 sessionId
 
+  // 模型参数设置面板
+  const [paramsOpen, setParamsOpen] = useState(true)
+  const [paramValues, setParamValues] = useState<Record<string, ParamValue>>({})
+
   const selectedModelLabel = selectedModel
+  const currentModelKwargs: ModelKwarg[] =
+    models.find((m) => m.model === selectedModel)?.kwargs ?? []
 
   // 页面加载时获取模型列表
   useEffect(() => {
@@ -65,10 +95,46 @@ export default function ChatPage() {
       .then((res) => {
         const list = res.data || []
         setModels(list)
-        if (list.length > 0) setSelectedModel(list[0].model)
+        if (list.length > 0) {
+          setSelectedModel(list[0].model)
+          setParamValues(buildDefaults(list[0].kwargs))
+        }
       })
       .catch((err) => console.error("获取模型列表失败:", err))
   }, [])
+
+  // 打开模型下拉框时刷新模型列表（保留先前选中项；选项不在则回退到第一项并重置参数）
+  const handleModelSelectOpenChange = async (open: boolean) => {
+    if (!open) return
+    const prev = selectedModel
+    try {
+      const res = await getModels()
+      const list = res.data || []
+      setModels(list)
+      if (list.some((m) => m.model === prev)) {
+        setSelectedModel(prev)
+      } else if (list.length > 0) {
+        setSelectedModel(list[0].model)
+        setParamValues(buildDefaults(list[0].kwargs))
+        setParamsOpen(true)
+      }
+    } catch (err) {
+      console.error("获取模型列表失败:", err)
+    }
+  }
+
+  // 切换模型：未变化时不动；切换后展开参数面板并重置为新模型默认值
+  const handleModelChange = (next: string) => {
+    if (next === selectedModel) return
+    setSelectedModel(next)
+    const kwargs = models.find((m) => m.model === next)?.kwargs
+    setParamValues(buildDefaults(kwargs))
+    setParamsOpen(true)
+  }
+
+  const setParamValue = (name: string, value: ParamValue) => {
+    setParamValues((prev) => ({ ...prev, [name]: value }))
+  }
 
   // 按 modelType 分组
   const modelGroups = models.reduce<Record<string, ModelItem[]>>((acc, m) => {
@@ -165,6 +231,7 @@ export default function ChatPage() {
         model: selectedModel,
         model_type: selectedModelType,
         content: { messages: conversationMessages },
+        kwargs: paramValues,
       })
 
       const reader = response.body?.getReader()
@@ -377,7 +444,8 @@ export default function ChatPage() {
           <Label className="font-bold">模型</Label>
           <Select
             value={selectedModel}
-            onValueChange={setSelectedModel}
+            onValueChange={handleModelChange}
+            onOpenChange={handleModelSelectOpenChange}
             disabled={isStreaming || models.length === 0}
           >
             <SelectTrigger className="w-52">
@@ -418,41 +486,166 @@ export default function ChatPage() {
 
         <Separator />
 
-        {/* 消息列表区域 */}
-        <div className="flex-1 min-h-0 overflow-y-auto space-y-4 py-2 px-1">
-          {messages.length === 0 ? (
-            <div className="h-full flex items-center justify-center">
-              <p className="text-sm text-muted-foreground">
-                选择模型，开始与 AI 对话
-              </p>
-            </div>
-          ) : (
-            <>
-              {messages.map((msg, index) => (
-                <div key={msg.id} className="space-y-4">
-                  <Message
-                    message={msg}
-                    // 最后一条 assistant 消息且正在流式生成时显示加载动画
-                    isStreaming={
-                      isStreaming &&
-                      index === messages.length - 1 &&
-                      msg.role === "assistant"
-                    }
-                  />
-                  {/* 历史会话末尾的分隔线，区分历史与后续新内容 */}
-                  {historyCount > 0 && index === historyCount - 1 && (
-                    <div className="flex items-center gap-3 px-2">
-                      <Separator className="flex-1" />
-                      <span className="text-xs text-muted-foreground shrink-0">以上为历史会话</span>
-                      <Separator className="flex-1" />
-                    </div>
+        {/* 主体区域：左侧参数设置 + 右侧消息列表 */}
+        <div className="flex-1 min-h-0 flex gap-2">
+          {/* 参数设置面板 */}
+          <aside
+            className={cn(
+              "flex-none flex flex-col border rounded-md bg-card transition-all duration-200",
+              paramsOpen ? "w-72" : "w-10"
+            )}
+          >
+            {paramsOpen ? (
+              <>
+                <div className="flex-none flex items-center justify-between px-3 py-2 border-b">
+                  <div className="flex items-center gap-2">
+                    <Settings2 size={14} />
+                    <span className="text-sm font-medium">参数设置</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    onClick={() => setParamsOpen(false)}
+                    title="收起"
+                  >
+                    <ChevronLeft size={14} />
+                  </Button>
+                </div>
+                <div className="flex-1 overflow-y-auto px-3 py-3 space-y-5">
+                  {currentModelKwargs.length === 0 ? (
+                    <p className="text-xs text-muted-foreground text-center pt-4">
+                      当前模型暂无可配置参数
+                    </p>
+                  ) : (
+                    currentModelKwargs.map((kw) => {
+                      const value = paramValues[kw.name]
+                      if (kw.type === "boolean") {
+                        return (
+                          <div key={kw.name} className="flex items-center justify-between gap-3">
+                            <Label className="text-xs font-medium truncate" title={kw.name}>
+                              {kw.name}
+                            </Label>
+                            <Switch
+                              checked={Boolean(value)}
+                              onCheckedChange={(v) => setParamValue(kw.name, v)}
+                              disabled={isStreaming}
+                            />
+                          </div>
+                        )
+                      }
+                      if (kw.type === "string") {
+                        const options = kw.option ?? []
+                        return (
+                          <div key={kw.name} className="space-y-2">
+                            <Label className="text-xs font-medium" title={kw.name}>
+                              {kw.name}
+                            </Label>
+                            <Select
+                              value={String(value ?? "")}
+                              onValueChange={(v) => setParamValue(kw.name, v)}
+                              disabled={isStreaming || options.length === 0}
+                            >
+                              <SelectTrigger className="w-full h-8">
+                                <SelectValue placeholder="请选择" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {options.map((opt) => (
+                                  <SelectItem key={opt} value={opt}>
+                                    {opt}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )
+                      }
+                      // number / integer
+                      const step = kw.type === "integer" ? 1 : 0.01
+                      const numValue =
+                        typeof value === "number" ? value : Number(kw.default ?? kw.min ?? 0)
+                      return (
+                        <div key={kw.name} className="space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <Label className="text-xs font-medium truncate" title={kw.name}>
+                              {kw.name}
+                            </Label>
+                            <span className="text-xs tabular-nums text-muted-foreground">
+                              {numValue}
+                            </span>
+                          </div>
+                          <Slider
+                            value={[numValue]}
+                            min={kw.min ?? 0}
+                            max={kw.max ?? 100}
+                            step={step}
+                            disabled={isStreaming}
+                            onValueChange={(v) =>
+                              setParamValue(
+                                kw.name,
+                                kw.type === "integer" ? Math.round(v[0]) : v[0]
+                              )
+                            }
+                          />
+                          <div className="flex justify-between text-[10px] text-muted-foreground tabular-nums">
+                            <span>{kw.min ?? 0}</span>
+                            <span>{kw.max ?? 100}</span>
+                          </div>
+                        </div>
+                      )
+                    })
                   )}
                 </div>
-              ))}
-              {/* 用于自动滚动到底部的锚点 */}
-              <div ref={messagesEndRef} />
-            </>
-          )}
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setParamsOpen(true)}
+                className="flex-1 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors rounded-md"
+                title="展开参数设置"
+              >
+                <ChevronRight size={14} />
+                <Settings2 size={14} />
+              </button>
+            )}
+          </aside>
+
+          {/* 消息列表区域 */}
+          <div className="flex-1 min-w-0 min-h-0 overflow-y-auto space-y-4 py-2 px-1">
+            {messages.length === 0 ? (
+              <div className="h-full flex items-center justify-center">
+                <p className="text-sm text-muted-foreground">
+                  选择模型，开始与 AI 对话
+                </p>
+              </div>
+            ) : (
+              <>
+                {messages.map((msg, index) => (
+                  <div key={msg.id} className="space-y-4">
+                    <Message
+                      message={msg}
+                      // 最后一条 assistant 消息且正在流式生成时显示加载动画
+                      isStreaming={
+                        isStreaming &&
+                        index === messages.length - 1 &&
+                        msg.role === "assistant"
+                      }
+                    />
+                    {/* 历史会话末尾的分隔线，区分历史与后续新内容 */}
+                    {historyCount > 0 && index === historyCount - 1 && (
+                      <div className="flex items-center gap-3 px-2">
+                        <Separator className="flex-1" />
+                        <span className="text-xs text-muted-foreground shrink-0">以上为历史会话</span>
+                        <Separator className="flex-1" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {/* 用于自动滚动到底部的锚点 */}
+                <div ref={messagesEndRef} />
+              </>
+            )}
+          </div>
         </div>
 
         <Separator />
