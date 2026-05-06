@@ -22,7 +22,7 @@ export interface ModelItem {
  */
 export async function getModels(): Promise<{ data: ModelItem[] }> {
   return fetcher(
-    `/ai/v1/models`,
+    `/ai/v2/models`,
     { method: 'GET' }
   )
 }
@@ -47,7 +47,7 @@ export interface ChatRequest {
  */
 export async function chatByStream(body: ChatRequest): Promise<Response> {
   return fetcher(
-    `/ai/v1/chat_stream`, // TODO: 修改为实际的后端 API 路径
+    `/ai/v2/chat_stream`, // TODO: 修改为实际的后端 API 路径
     {
       method: 'POST',
       headers: {
