@@ -6,6 +6,7 @@ export interface ModelKwarg {
   name: string
   type: ModelKwargType
   default: string | number | boolean
+  description?: string
   min?: number
   max?: number
   option?: string[]

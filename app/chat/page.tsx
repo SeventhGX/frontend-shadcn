@@ -11,13 +11,20 @@ import {
   Settings2,
   ChevronLeft,
   ChevronRight,
+  HelpCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import {
   Select,
@@ -84,6 +91,9 @@ export default function ChatPage() {
   // 模型参数设置面板
   const [paramsOpen, setParamsOpen] = useState(true)
   const [paramValues, setParamValues] = useState<Record<string, ParamValue>>({})
+  // 当前正处于手动输入模式的数值参数名
+  const [editingParam, setEditingParam] = useState<string | null>(null)
+  const [editingDraft, setEditingDraft] = useState<string>("")
 
   const selectedModelLabel = selectedModel
   const currentModelKwargs: ModelKwarg[] =
@@ -520,12 +530,34 @@ export default function ChatPage() {
                   ) : (
                     currentModelKwargs.map((kw) => {
                       const value = paramValues[kw.name]
+                      const labelNode = (
+                        <div className="flex items-center gap-1 min-w-0">
+                          <Label className="text-xs font-medium truncate" title={kw.name}>
+                            {kw.name}
+                          </Label>
+                          {kw.description && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="text-muted-foreground hover:text-foreground transition-colors shrink-0 cursor-help"
+                                  aria-label={`${kw.name} 说明`}
+                                >
+                                  <HelpCircle size={12} />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="max-w-xs text-xs">
+                                {kw.description}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                        </div>
+                      )
+
                       if (kw.type === "boolean") {
                         return (
                           <div key={kw.name} className="flex items-center justify-between gap-3">
-                            <Label className="text-xs font-medium truncate" title={kw.name}>
-                              {kw.name}
-                            </Label>
+                            {labelNode}
                             <Switch
                               checked={Boolean(value)}
                               onCheckedChange={(v) => setParamValue(kw.name, v)}
@@ -538,9 +570,7 @@ export default function ChatPage() {
                         const options = kw.option ?? []
                         return (
                           <div key={kw.name} className="space-y-2">
-                            <Label className="text-xs font-medium" title={kw.name}>
-                              {kw.name}
-                            </Label>
+                            {labelNode}
                             <Select
                               value={String(value ?? "")}
                               onValueChange={(v) => setParamValue(kw.name, v)}
@@ -562,22 +592,73 @@ export default function ChatPage() {
                       }
                       // number / integer
                       const step = kw.type === "integer" ? 1 : 0.01
+                      const minV = kw.min ?? 0
+                      const maxV = kw.max ?? 100
                       const numValue =
-                        typeof value === "number" ? value : Number(kw.default ?? kw.min ?? 0)
+                        typeof value === "number" ? value : Number(kw.default ?? minV)
+                      const isEditing = editingParam === kw.name
+
+                      const commitDraft = () => {
+                        const parsed =
+                          kw.type === "integer"
+                            ? parseInt(editingDraft, 10)
+                            : parseFloat(editingDraft)
+                        if (!Number.isNaN(parsed)) {
+                          const clamped = Math.min(maxV, Math.max(minV, parsed))
+                          setParamValue(
+                            kw.name,
+                            kw.type === "integer" ? Math.round(clamped) : clamped
+                          )
+                        }
+                        setEditingParam(null)
+                      }
+
                       return (
                         <div key={kw.name} className="space-y-2">
                           <div className="flex items-center justify-between gap-2">
-                            <Label className="text-xs font-medium truncate" title={kw.name}>
-                              {kw.name}
-                            </Label>
-                            <span className="text-xs tabular-nums text-muted-foreground">
-                              {numValue}
-                            </span>
+                            {labelNode}
+                            {isEditing ? (
+                              <Input
+                                type="number"
+                                autoFocus
+                                value={editingDraft}
+                                min={minV}
+                                max={maxV}
+                                step={step}
+                                onChange={(e) => setEditingDraft(e.target.value)}
+                                onBlur={commitDraft}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault()
+                                    commitDraft()
+                                  } else if (e.key === "Escape") {
+                                    e.preventDefault()
+                                    setEditingParam(null)
+                                  }
+                                }}
+                                disabled={isStreaming}
+                                className="h-6 w-24 px-2 py-0 text-xs tabular-nums"
+                              />
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (isStreaming) return
+                                  setEditingDraft(String(numValue))
+                                  setEditingParam(kw.name)
+                                }}
+                                title="点击手动输入"
+                                className="text-xs tabular-nums text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded px-1.5 py-0.5 transition-colors disabled:opacity-50"
+                                disabled={isStreaming}
+                              >
+                                {numValue}
+                              </button>
+                            )}
                           </div>
                           <Slider
                             value={[numValue]}
-                            min={kw.min ?? 0}
-                            max={kw.max ?? 100}
+                            min={minV}
+                            max={maxV}
                             step={step}
                             disabled={isStreaming}
                             onValueChange={(v) =>
@@ -588,8 +669,8 @@ export default function ChatPage() {
                             }
                           />
                           <div className="flex justify-between text-[10px] text-muted-foreground tabular-nums">
-                            <span>{kw.min ?? 0}</span>
-                            <span>{kw.max ?? 100}</span>
+                            <span>{minV}</span>
+                            <span>{maxV}</span>
                           </div>
                         </div>
                       )
