@@ -59,6 +59,38 @@ export async function chatByStream(body: ChatRequest): Promise<Response> {
   )
 }
 
+/**
+ * 图像生成
+ */
+export interface ImageGenerateRequest {
+  model_type: string
+  model: string
+  content: { prompt: string }
+  kwargs?: Record<string, string | number | boolean>
+}
+
+export interface ImageItem {
+  type: "b64_json" | "url"
+  data: string
+}
+
+export interface ImageGenerateResponse {
+  message: string
+  code: number
+  data: ImageItem[]
+}
+
+export async function generateImage(body: ImageGenerateRequest): Promise<ImageGenerateResponse> {
+  return fetcher(
+    `/ai/v2/image_generate`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  )
+}
+
 // ---------- 历史会话相关 ----------
 
 export interface ChatSession {
