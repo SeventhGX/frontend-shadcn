@@ -43,7 +43,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { AuthGuard } from "@/components/common/auth-guard"
-import { Message, type ChatMessage } from "@/components/common/message"
+import { Message, type ChatMessage, type ChatImageItem } from "@/components/common/message"
 import {
   chatByStream,
   generateImage,
@@ -231,6 +231,9 @@ export default function ChatPage() {
 
     const selectedModelType = models.find((m) => m.model === selectedModel)?.modelType
 
+    // 记录本次生成的图像，供 finally 中构造保存请求时使用（避免 messagesRef 滞后）
+    let pendingImages: ChatImageItem[] | null = null
+
     try {
       if (selectedModelType?.toLowerCase() === "image") {
         // 图像生成模式：调用图像生成接口
@@ -241,13 +244,15 @@ export default function ChatPage() {
           kwargs: paramValues,
         })
 
+        pendingImages = res.data ?? []
+
         setMessages((prev) => {
           const updated = [...prev]
           const last = updated[updated.length - 1]
           if (last && last.role === "assistant") {
             updated[updated.length - 1] = {
               ...last,
-              images: res.data ?? [],
+              images: pendingImages ?? [],
             }
           }
           return updated
@@ -346,13 +351,21 @@ export default function ChatPage() {
 
       // 流式传输完成后，同步会话到后台
       // 从 ref 读最新 messages，避免在 setState updater 里发请求（Strict Mode 会重复调用）
-      const finalMessages = messagesRef.current.map((m) => {
-        if (m.images && m.images.length > 0) {
+      const finalMessages = messagesRef.current.map((m, idx, arr) => {
+        // 本次生成的图像可能尚未通过 setState 同步到 ref，这里手动覆盖到最后一条 assistant 消息
+        const isLastAssistant = idx === arr.length - 1 && m.role === "assistant"
+        const images =
+          isLastAssistant && pendingImages && pendingImages.length > 0
+            ? pendingImages
+            : m.images
+        if (images && images.length > 0) {
           // 优先使用 base64，其次使用 url，将图像序列化为 content 字符串
           const chosen =
-            m.images.find((img) => img.type === "b64_json") ??
-            m.images.find((img) => img.type === "url")
-          return { role: m.role, content: chosen?.data ?? m.content }
+            images.find((img) => img.type === "b64_json") ??
+            images.find((img) => img.type === "url")
+          // return { role: m.role, content: chosen?.data ?? m.content }
+          // TODO: 优化图像存储方式，目前先使用空白占位，避免过大内容导致请求失败
+          return { role: m.role, content: "" }
         }
         return { role: m.role, content: m.content }
       })
