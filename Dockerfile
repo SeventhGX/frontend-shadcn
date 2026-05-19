@@ -2,14 +2,15 @@
 
 # 第一阶段：安装依赖
 FROM node:20-alpine AS deps
-# 安装 libc6-compat 以提高兼容性
-RUN apk add --no-cache libc6-compat
+# 切换 Alpine 为阿里云镜像源，加速 apk 安装
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
+    apk add --no-cache libc6-compat
 WORKDIR /app
 
 # 复制 package.json 和 lock 文件
 COPY package.json package-lock.json* ./
-# 安装所有依赖（包括 devDependencies，构建时需要）
-RUN npm install --ignore-scripts --registry=https://registry.npmmirror.com/
+# npm ci 直接读取 lockfile，跳过依赖解析，比 npm install 快 2-3 倍
+RUN npm ci --ignore-scripts --registry=https://registry.npmmirror.com/
 
 # 第二阶段：构建应用
 FROM node:20-alpine AS builder
@@ -34,26 +35,20 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# 创建非 root 用户
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+# 合并为一条命令，减少镜像层
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
 
-# 复制构建产物
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+# 用 --chown 直接在复制时设置权限，避免额外的 chown 层
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# 设置文件所有者
-RUN chown -R nextjs:nodejs /app
-
-# 切换到非 root 用户
 USER nextjs
 
-# 暴露端口
 EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# 启动应用
 CMD ["node", "server.js"]
