@@ -43,9 +43,10 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { AuthGuard } from "@/components/common/auth-guard"
-import { Message, type ChatMessage } from "@/components/common/message"
+import { Message, type ChatMessage, type ChatImageItem } from "@/components/common/message"
 import {
   chatByStream,
+  generateImage,
   getModels,
   getChatSessions,
   getChatSessionById,
@@ -228,79 +229,106 @@ export default function ChatPage() {
     setInput("")
     setIsStreaming(true)
 
+    const selectedModelType = models.find((m) => m.model === selectedModel)?.modelType
+
+    // 记录本次生成的图像，供 finally 中构造保存请求时使用（避免 messagesRef 滞后）
+    let pendingImages: ChatImageItem[] | null = null
+
     try {
-      const conversationMessages = [
-        ...historyMessages.map((m) => ({ role: m.role, content: m.content })),
-        { role: userMessage.role, content: userMessage.content },
-      ]
+      if (selectedModelType?.toLowerCase() === "image") {
+        // 图像生成模式：调用图像生成接口
+        const res = await generateImage({
+          model_type: selectedModelType,
+          model: selectedModel,
+          content: { prompt: userContent },
+          kwargs: paramValues,
+        })
 
-      const selectedModelType =
-        models.find((m) => m.model === selectedModel)?.modelType
+        pendingImages = res.data ?? []
 
-      const response = await chatByStream({
-        model: selectedModel,
-        model_type: selectedModelType,
-        content: { messages: conversationMessages },
-        kwargs: paramValues,
-      })
-
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-
-      if (!reader) throw new Error("无法获取流读取器")
-
-      let buffer = ""
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split("\n")
-        buffer = lines.pop() || ""
-
-        for (const line of lines) {
-          const trimmedLine = line.trim()
-          if (!trimmedLine) continue
-
-          // 移除 SSE "data: " 前缀
-          let jsonStr = trimmedLine
-          if (trimmedLine.startsWith("data: ")) {
-            jsonStr = trimmedLine.substring(6)
-          }
-
-          if (jsonStr === "[DONE]" || !jsonStr.trim()) continue
-
-          try {
-            const data = JSON.parse(jsonStr)
-
-            if (data.content !== undefined) {
-              setMessages((prev) => {
-                const updated = [...prev]
-                const last = updated[updated.length - 1]
-                if (last && last.role === "assistant") {
-                  updated[updated.length - 1] = {
-                    ...last,
-                    content: last.content + data.content,
-                  }
-                }
-                return updated
-              })
-            } else if (data.reasoning_content !== undefined) {
-              setMessages((prev) => {
-                const updated = [...prev]
-                const last = updated[updated.length - 1]
-                if (last && last.role === "assistant") {
-                  updated[updated.length - 1] = {
-                    ...last,
-                    reasoning: (last.reasoning ?? "") + data.reasoning_content,
-                  }
-                }
-                return updated
-              })
+        setMessages((prev) => {
+          const updated = [...prev]
+          const last = updated[updated.length - 1]
+          if (last && last.role === "assistant") {
+            updated[updated.length - 1] = {
+              ...last,
+              images: pendingImages ?? [],
             }
-          } catch (e) {
-            console.warn("JSON 解析错误:", trimmedLine, e)
+          }
+          return updated
+        })
+      } else {
+        // 流式对话模式
+        const conversationMessages = [
+          ...historyMessages.map((m) => ({ role: m.role, content: m.content })),
+          { role: userMessage.role, content: userMessage.content },
+        ]
+
+        const response = await chatByStream({
+          model: selectedModel,
+          model_type: selectedModelType,
+          content: { messages: conversationMessages },
+          kwargs: paramValues,
+        })
+
+        const reader = response.body?.getReader()
+        const decoder = new TextDecoder()
+
+        if (!reader) throw new Error("无法获取流读取器")
+
+        let buffer = ""
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split("\n")
+          buffer = lines.pop() || ""
+
+          for (const line of lines) {
+            const trimmedLine = line.trim()
+            if (!trimmedLine) continue
+
+            // 移除 SSE "data: " 前缀
+            let jsonStr = trimmedLine
+            if (trimmedLine.startsWith("data: ")) {
+              jsonStr = trimmedLine.substring(6)
+            }
+
+            if (jsonStr === "[DONE]" || !jsonStr.trim()) continue
+
+            try {
+              const data = JSON.parse(jsonStr)
+
+              if (data.content !== undefined) {
+                setMessages((prev) => {
+                  const updated = [...prev]
+                  const last = updated[updated.length - 1]
+                  if (last && last.role === "assistant") {
+                    updated[updated.length - 1] = {
+                      ...last,
+                      content: last.content + data.content,
+                    }
+                  }
+                  return updated
+                })
+              } else if (data.reasoning_content !== undefined) {
+                setMessages((prev) => {
+                  const updated = [...prev]
+                  const last = updated[updated.length - 1]
+                  if (last && last.role === "assistant") {
+                    updated[updated.length - 1] = {
+                      ...last,
+                      reasoning: (last.reasoning ?? "") + data.reasoning_content,
+                    }
+                  }
+                  return updated
+                })
+              }
+            } catch (e) {
+              console.warn("JSON 解析错误:", trimmedLine, e)
+            }
           }
         }
       }
@@ -323,12 +351,24 @@ export default function ChatPage() {
 
       // 流式传输完成后，同步会话到后台
       // 从 ref 读最新 messages，避免在 setState updater 里发请求（Strict Mode 会重复调用）
-      const finalMessages = messagesRef.current.map((m) => ({
-        role: m.role,
-        content: m.content,
-      }))
-      const selectedModelType =
-        models.find((m) => m.model === selectedModel)?.modelType
+      const finalMessages = messagesRef.current.map((m, idx, arr) => {
+        // 本次生成的图像可能尚未通过 setState 同步到 ref，这里手动覆盖到最后一条 assistant 消息
+        const isLastAssistant = idx === arr.length - 1 && m.role === "assistant"
+        const images =
+          isLastAssistant && pendingImages && pendingImages.length > 0
+            ? pendingImages
+            : m.images
+        if (images && images.length > 0) {
+          // 优先使用 base64，其次使用 url，将图像序列化为 content 字符串
+          const chosen =
+            images.find((img) => img.type === "b64_json") ??
+            images.find((img) => img.type === "url")
+          // return { role: m.role, content: chosen?.data ?? m.content }
+          // TODO: 优化图像存储方式，目前先使用空白占位，避免过大内容导致请求失败
+          return { role: m.role, content: "" }
+        }
+        return { role: m.role, content: m.content }
+      })
 
       if (!currentSessionId) {
         // 新建会话：调用 add_session 获取 id 与名称

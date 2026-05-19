@@ -8,12 +8,18 @@ import remarkBreaks from "remark-breaks"
 import { cn } from "@/lib/utils"
 import { CopyButton } from "./CopyButton"
 
+export interface ChatImageItem {
+  type: "b64_json" | "url"
+  data: string
+}
+
 export interface ChatMessage {
   id: string
   role: "user" | "assistant"
   content: string
   modelName?: string // 模型名称，仅 assistant 消息有效
   reasoning?: string // 推理内容，仅 assistant 消息有效
+  images?: ChatImageItem[] // 图像生成结果
 }
 
 interface MessageProps {
@@ -97,7 +103,26 @@ export function Message({ message, isStreaming }: MessageProps) {
               : "bg-muted text-foreground"
           )}
         >
-          {message.content ? (
+          {message.images && message.images.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {message.images.map((img, i) => {
+                const src =
+                  img.type === "b64_json"
+                    ? `data:image/png;base64,${img.data}`
+                    : img.data
+                return (
+                  <a key={i} href={src} target="_blank" rel="noopener noreferrer">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={src}
+                      alt={`generated-${i}`}
+                      className="max-w-full rounded-md"
+                    />
+                  </a>
+                )
+              })}
+            </div>
+          ) : message.content ? (
             isUser ? (
               <p className="whitespace-pre-wrap wrap-break-word">{message.content}</p>
             ) : (
@@ -187,7 +212,7 @@ export function Message({ message, isStreaming }: MessageProps) {
               </div>
             )
           ) : isStreaming && !isReasoning ? (
-            // 等待首个 content chunk
+            // 等待响应
             <span className="flex gap-1 items-center h-4">
               <span className="w-1.5 h-1.5 bg-current rounded-full animate-bounce [animation-delay:0ms]" />
               <span className="w-1.5 h-1.5 bg-current rounded-full animate-bounce [animation-delay:150ms]" />
