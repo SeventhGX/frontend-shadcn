@@ -12,9 +12,13 @@ echo "🔄 更新并重新部署前端应用..."
 #     git pull
 # fi
 
-# 重新构建镜像
+# 重新构建镜像（限制资源，避免低配服务器卡死）
+# nice -n 19 / ionice -c 3 把构建进程降到最低优先级，CPU 和 IO 优先让给其他服务
+# 同时关闭 BuildKit 以便支持 --memory 资源限制
 echo "📦 重新构建 Docker 镜像..."
-docker-compose build --no-cache
+export DOCKER_BUILDKIT=0
+export COMPOSE_DOCKER_CLI_BUILD=0
+nice -n 19 ionice -c 3 docker-compose build --no-cache --memory 800m
 
 # 重启容器
 echo "🔄 重启容器..."
