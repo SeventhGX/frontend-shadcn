@@ -52,10 +52,40 @@ import {
   getChatSessionById,
   addSession,
   updateSession,
+  saveFile,
+  getFile,
   type ChatSession,
   type ModelItem,
   type ModelKwarg,
 } from "@/features/chat/api"
+
+const IMAGE_REF_PREFIX = "Image-:"
+
+// 从消息 content 中提取所有 Image-: 前缀的文件 ID
+function extractImageIds(content: string): string[] {
+  if (!content) return []
+  const ids: string[] = []
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (trimmed.startsWith(IMAGE_REF_PREFIX)) {
+      const id = trimmed.slice(IMAGE_REF_PREFIX.length).trim()
+      if (id) ids.push(id)
+    }
+  }
+  return ids
+}
+
+// 将 Blob 转 base64（不含 data: 前缀）
+async function blobToBase64(blob: Blob): Promise<string> {
+  const buf = await blob.arrayBuffer()
+  const bytes = new Uint8Array(buf)
+  let binary = ""
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  }
+  return btoa(binary)
+}
 
 type ParamValue = string | number | boolean
 
@@ -181,13 +211,20 @@ export default function ChatPage() {
     try {
       const detail = await getChatSessionById(session.id)
       const session_detail = detail.data.content.messages || []
-      // 将会话消息转换为页面所用格式
-      const loaded: ChatMessage[] = session_detail.map((m: { role: string; content: any }, i: any) => ({
-        id: `loaded-${session.id}-${i}`,
-        role: m.role,
-        content: m.content,
-        modelName: m.role === "assistant" ? detail.model : undefined,
-      }))
+      // 将会话消息转换为页面所用格式；识别 Image-: 前缀的图像引用消息
+      const parsed = session_detail.map((m: { role: string; content: any }, i: any) => {
+        const content = typeof m.content === "string" ? m.content : ""
+        const imageIds = extractImageIds(content)
+        const msg: ChatMessage = {
+          id: `loaded-${session.id}-${i}`,
+          role: m.role as "user" | "assistant",
+          content: imageIds.length > 0 ? "" : content,
+          modelName: m.role === "assistant" ? detail.model : undefined,
+          images: imageIds.length > 0 ? [] : undefined,
+        }
+        return { msg, imageIds }
+      })
+      const loaded: ChatMessage[] = parsed.map((p: { msg: ChatMessage }) => p.msg)
       setMessages(loaded)
       setHistoryCount(loaded.length)
       // 同步当前会话 id 与标题
@@ -198,6 +235,24 @@ export default function ChatPage() {
         setSelectedModel(detail.model)
       }
       setSheetOpen(false)
+
+      // 异步加载历史消息中引用的图像
+      parsed.forEach(async (p: { msg: ChatMessage; imageIds: string[] }) => {
+        if (p.imageIds.length === 0) return
+        const images: ChatImageItem[] = []
+        for (const id of p.imageIds) {
+          try {
+            const res = await getFile(id)
+            images.push({ type: "b64_json", data: res.data.data })
+          } catch (err) {
+            console.error("获取历史图像失败:", id, err)
+          }
+        }
+        if (images.length === 0) return
+        setMessages((prev) =>
+          prev.map((m) => (m.id === p.msg.id ? { ...m, images } : m))
+        )
+      })
     } catch (error) {
       console.error("获取会话详情失败:", error)
     } finally {
@@ -233,6 +288,8 @@ export default function ChatPage() {
 
     // 记录本次生成的图像，供 finally 中构造保存请求时使用（避免 messagesRef 滞后）
     let pendingImages: ChatImageItem[] | null = null
+    // 本次生成图像在后端保存后返回的文件 ID
+    const savedImageIds: string[] = []
 
     try {
       if (selectedModelType?.toLowerCase() === "image") {
@@ -257,6 +314,32 @@ export default function ChatPage() {
           }
           return updated
         })
+
+        // 异步保存图像到后端，收集返回的文件 ID，用于会话内容持久化
+        for (const img of pendingImages) {
+          try {
+            let base64 = img.data
+            let fileType = "image/png"
+            let sourceUrl: string | null = null
+            const filename = `generated-${Date.now()}.png`
+            if (img.type === "url") {
+              sourceUrl = img.data
+              const r = await fetch(img.data)
+              fileType = r.headers.get("content-type") || "image/png"
+              const blob = await r.blob()
+              base64 = await blobToBase64(blob)
+            }
+            const sres = await saveFile({
+              source_url: sourceUrl,
+              filename,
+              file_type: fileType,
+              data: base64,
+            })
+            if (sres.data?.id) savedImageIds.push(sres.data.id)
+          } catch (err) {
+            console.error("保存图像失败:", err)
+          }
+        }
       } else {
         // 流式对话模式
         const conversationMessages = [
@@ -359,13 +442,12 @@ export default function ChatPage() {
             ? pendingImages
             : m.images
         if (images && images.length > 0) {
-          // 优先使用 base64，其次使用 url，将图像序列化为 content 字符串
-          const chosen =
-            images.find((img) => img.type === "b64_json") ??
-            images.find((img) => img.type === "url")
-          // return { role: m.role, content: chosen?.data ?? m.content }
-          // TODO: 优化图像存储方式，目前先使用空白占位，避免过大内容导致请求失败
-          return { role: m.role, content: "" }
+          // 使用保存图像后获得的文件 ID 持久化引用，加载时再异步还原图像
+          const content =
+            savedImageIds.length > 0
+              ? savedImageIds.map((id) => `${IMAGE_REF_PREFIX}${id}`).join("\n")
+              : ""
+          return { role: m.role, content }
         }
         return { role: m.role, content: m.content }
       })
