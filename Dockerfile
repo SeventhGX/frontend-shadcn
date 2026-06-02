@@ -25,7 +25,7 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 # 限制 Node 堆内存，避免构建时吃满系统内存触发 OOM
-ENV NODE_OPTIONS=--max-old-space-size=512
+ENV NODE_OPTIONS=--max-old-space-size=1536
 # 限制 Next.js / webpack 的并行 worker 数，降低 CPU 峰值
 ENV NEXT_BUILD_WORKERS=1
 

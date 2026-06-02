@@ -18,7 +18,7 @@ echo "🔄 更新并重新部署前端应用..."
 echo "📦 重新构建 Docker 镜像..."
 export DOCKER_BUILDKIT=0
 export COMPOSE_DOCKER_CLI_BUILD=0
-nice -n 19 ionice -c 3 docker-compose build --no-cache --memory 800m
+nice -n 19 ionice -c 3 docker-compose build --no-cache
 
 # 重启容器
 echo "🔄 重启容器..."
