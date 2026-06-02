@@ -181,3 +181,56 @@ export async function updateSession(body: UpdateSessionRequest): Promise<{ data:
     }
   )
 }
+
+// ---------- 文件相关 ----------
+
+export interface SaveFileRequest {
+  source_url?: string | null
+  filename: string
+  file_type: string
+  data: string // base64 编码
+}
+
+export interface SaveFileResponse {
+  message: string
+  code: number
+  data: { id: string }
+}
+
+/**
+ * 保存文件（base64 形式上传）
+ */
+export async function saveFile(body: SaveFileRequest): Promise<SaveFileResponse> {
+  return fetcher(
+    `/ai/v1/save_file`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  )
+}
+
+export interface FileData {
+  id: string
+  source_url: string | null
+  filename: string
+  file_type: string
+  data: string // base64 编码
+}
+
+export interface GetFileResponse {
+  message: string
+  code: number
+  data: FileData
+}
+
+/**
+ * 根据文件 ID 获取文件内容
+ */
+export async function getFile(fileId: string): Promise<GetFileResponse> {
+  return fetcher(
+    `/ai/v1/file?file_id=${encodeURIComponent(fileId)}`,
+    { method: 'GET' }
+  )
+}
