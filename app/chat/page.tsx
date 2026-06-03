@@ -839,6 +839,25 @@ export default function ChatPage() {
                         index === messages.length - 1 &&
                         msg.role === "assistant"
                       }
+                      onSubmitImage={async (img, name) => {
+                        try {
+                          let base64 = img.data
+                          let mimeType = img.mimeType ?? "image/png"
+                          if (img.type === "url") {
+                            const r = await fetch(img.data)
+                            mimeType = r.headers.get("content-type") || mimeType
+                            const blob = await r.blob()
+                            base64 = await blobToBase64(blob)
+                          }
+                          imageAttachmentsRef.current?.addImage({
+                            name,
+                            base64,
+                            mimeType,
+                          })
+                        } catch (err) {
+                          console.error("提交图像到附件失败:", err)
+                        }
+                      }}
                     />
                     {/* 历史会话末尾的分隔线，区分历史与后续新内容 */}
                     {historyCount > 0 && index === historyCount - 1 && (
