@@ -45,6 +45,10 @@ import {
 import { AuthGuard } from "@/components/common/auth-guard"
 import { Message, type ChatMessage, type ChatImageItem } from "@/components/common/message"
 import {
+  ImageAttachments,
+  type ImageAttachmentsHandle,
+} from "@/components/common/image-attachments"
+import {
   chatByStream,
   generateImage,
   getModels,
@@ -112,6 +116,8 @@ export default function ChatPage() {
   const isComposingRef = useRef(false) // 记录输入法候选状态
   // 保存最新的 messages，供流式结束后同步会话使用（避免在 setState updater 中执行副作用）
   const messagesRef = useRef<ChatMessage[]>([])
+  // 图片附件组件引用，便于外部通过 addImage 注入 base64 图像
+  const imageAttachmentsRef = useRef<ImageAttachmentsHandle>(null)
 
   // 历史会话侧边栏状态
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -854,25 +860,31 @@ export default function ChatPage() {
         <Separator />
 
         {/* 输入区域 */}
-        <div className="flex-none flex gap-2 items-end">
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onCompositionStart={() => (isComposingRef.current = true)}
-            onCompositionEnd={() => (isComposingRef.current = false)}
-            placeholder="输入消息，Enter 发送，Shift+Enter 换行"
-            className="min-h-15 max-h-36 resize-none"
+        <div className="flex-none flex flex-col gap-2">
+          <div className="flex gap-2 items-end">
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onCompositionStart={() => (isComposingRef.current = true)}
+              onCompositionEnd={() => (isComposingRef.current = false)}
+              placeholder="输入消息，Enter 发送，Shift+Enter 换行"
+              className="min-h-15 max-h-36 resize-none"
+              disabled={isStreaming}
+            />
+            <Button
+              onClick={handleSend}
+              disabled={!input.trim() || isStreaming}
+              className="gap-2 h-15 px-5"
+            >
+              <Send size={16} />
+              {isStreaming ? "生成中..." : "发送"}
+            </Button>
+          </div>
+          <ImageAttachments
+            ref={imageAttachmentsRef}
             disabled={isStreaming}
           />
-          <Button
-            onClick={handleSend}
-            disabled={!input.trim() || isStreaming}
-            className="gap-2 h-15 px-5"
-          >
-            <Send size={16} />
-            {isStreaming ? "生成中..." : "发送"}
-          </Button>
         </div>
       </div>
     </AuthGuard>
