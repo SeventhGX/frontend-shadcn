@@ -294,17 +294,42 @@ export default function ChatPage() {
     // 在 state 更新前记录当前历史，用于构造请求体
     const historyMessages = messages
 
-    setMessages((prev) => [...prev, userMessage, assistantMessage])
-    setInput("")
-    setIsStreaming(true)
-
     const selectedModelType = models.find((m) => m.model === selectedModel)?.modelType
     const isImageModel = selectedModelType?.toLowerCase() === "image"
-    // 在 setIsStreaming 之前读取，发送过程中 image-attachments 可能被外部更新
+    // 在进入流式状态之前读取附件，避免发送过程中被外部更新
     const attachedImages = isImageModel
       ? imageAttachmentsRef.current?.getImages() ?? []
       : []
     const isImageEdit = isImageModel && attachedImages.length > 0
+
+    // 改图场景：将每张附件图片作为一条独立的 user 消息插入到本次文字消息之前
+    // 立即写入 state，让用户在等待响应时就能看到自己发送的图片
+    const baseTs = Date.now()
+    const attachedImageMessages: ChatMessage[] = attachedImages.map(
+      (att, i) => ({
+        id: `user-img-${baseTs}-${i}`,
+        role: "user",
+        content: "",
+        images: [
+          {
+            type: "b64_json",
+            data: att.base64,
+            name: att.name,
+            mimeType: att.mimeType,
+            id: att.sourceId, // 已有 sourceId 则直接附带，否则稍后回填
+          },
+        ],
+      })
+    )
+
+    setMessages((prev) => [
+      ...prev,
+      ...attachedImageMessages,
+      userMessage,
+      assistantMessage,
+    ])
+    setInput("")
+    setIsStreaming(true)
 
     // 记录本次生成的图像，供 finally 中构造保存请求时使用（避免 messagesRef 滞后）
     let pendingImages: ChatImageItem[] | null = null
@@ -316,6 +341,39 @@ export default function ChatPage() {
         // 图像生成 / 编辑：根据是否有附件图片决定调用哪个接口
         let res
         if (isImageEdit) {
+          // 先把用户手选的图（未保存）入库，回填 id 到附件与对应 user 图像消息
+          for (let i = 0; i < attachedImages.length; i++) {
+            const att = attachedImages[i]
+            if (att.sourceId) continue
+            try {
+              const sres = await saveFile({
+                source_url: null,
+                filename: att.name,
+                file_type: att.mimeType,
+                data: att.base64,
+              })
+              const newId = sres.data?.id
+              if (newId) {
+                att.sourceId = newId
+                const msgId = attachedImageMessages[i].id
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === msgId
+                      ? {
+                          ...m,
+                          images: m.images?.map((im, k) =>
+                            k === 0 ? { ...im, id: newId } : im
+                          ),
+                        }
+                      : m
+                  )
+                )
+              }
+            } catch (err) {
+              console.error("保存附件图像失败:", err)
+            }
+          }
+
           const imageInputs = attachedImages.map(
             // (img) => `data:${img.mimeType};base64,${img.base64}`
             (img) => `${img.base64}`
@@ -512,59 +570,22 @@ export default function ChatPage() {
       }
 
       // 流式传输完成后，同步会话到后台
-      let finalMessages: ChatRequestMessage[]
-
-      if (isImageEdit) {
-        // 图像编辑：将每张附件图片作为一条独立的 user 消息保存
-        // 已有 sourceId 则直接复用；否则先调用 saveFile 入库再使用其 id
-        const attachedIdMessages: ChatRequestMessage[] = []
-        for (const img of attachedImages) {
-          let id = img.sourceId
-          if (!id) {
-            try {
-              const sres = await saveFile({
-                source_url: null,
-                filename: img.name,
-                file_type: img.mimeType,
-                data: img.base64,
-              })
-              id = sres.data?.id
-            } catch (err) {
-              console.error("保存附件图像失败:", err)
-            }
-          }
-          if (id) {
-            attachedIdMessages.push({
-              role: "user",
-              content: `${IMAGE_REF_PREFIX}${id}`,
-            })
-          }
-        }
-
-        const assistantContent =
-          savedImageIds.length > 0
-            ? savedImageIds.map((id) => `${IMAGE_REF_PREFIX}${id}`).join("\n")
-            : ""
-
-        finalMessages = [
-          ...historyMessages.map((m) => toRequestMessage(m)),
-          ...attachedIdMessages,
-          { role: userMessage.role, content: userMessage.content },
-          { role: "assistant", content: assistantContent },
-        ]
-
-        // 一次改图对话完成后清空附件
-        imageAttachmentsRef.current?.clear()
-      } else {
-        // 从 ref 读最新 messages，避免在 setState updater 里发请求（Strict Mode 会重复调用）
-        finalMessages = messagesRef.current.map((m, idx, arr) => {
-          const isLastAssistant = idx === arr.length - 1 && m.role === "assistant"
+      // 从 ref 读最新 messages，避免在 setState updater 里发请求（Strict Mode 会重复调用）
+      const finalMessages: ChatRequestMessage[] = messagesRef.current.map(
+        (m, idx, arr) => {
+          const isLastAssistant =
+            idx === arr.length - 1 && m.role === "assistant"
           // 本次生成的图像可能尚未通过 setState 同步到 ref，这里手动覆盖到最后一条 assistant 消息
           if (isLastAssistant && pendingImages && pendingImages.length > 0) {
             return toRequestMessage(m, pendingImages)
           }
           return toRequestMessage(m)
-        })
+        }
+      )
+
+      // 一次改图对话完成后清空附件
+      if (isImageEdit) {
+        imageAttachmentsRef.current?.clear()
       }
 
       if (!currentSessionId) {
