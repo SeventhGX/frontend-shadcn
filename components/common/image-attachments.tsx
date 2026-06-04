@@ -18,6 +18,8 @@ export interface ImageAttachmentItem {
   base64: string
   // MIME 类型，用于拼接 data url 预览
   mimeType: string
+  // 后端已保存的文件 ID（若图像来自已保存的资源，例如 message 提交过来的图）
+  sourceId?: string
 }
 
 export interface ImageAttachmentsHandle {
@@ -26,6 +28,7 @@ export interface ImageAttachmentsHandle {
     name: string
     base64: string
     mimeType?: string
+    sourceId?: string
   }) => string
   clear: () => void
   getImages: () => ImageAttachmentItem[]
@@ -96,12 +99,13 @@ export const ImageAttachments = React.forwardRef<
   React.useImperativeHandle(
     ref,
     () => ({
-      addImage: ({ name, base64, mimeType }) => {
+      addImage: ({ name, base64, mimeType, sourceId }) => {
         const item: ImageAttachmentItem = {
           id: genId(),
           name,
           base64,
           mimeType: mimeType ?? "image/png",
+          sourceId,
         }
         update([...imagesRef.current, item])
         return item.id

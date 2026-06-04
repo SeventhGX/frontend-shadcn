@@ -20,6 +20,7 @@ export interface ChatImageItem {
   data: string
   name?: string // 可选的原始文件名
   mimeType?: string // 可选的 MIME 类型，默认 image/png
+  id?: string // 后端已保存的文件 ID（若已保存）
 }
 
 export interface ChatMessage {
