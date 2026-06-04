@@ -91,6 +91,29 @@ export async function generateImage(body: ImageGenerateRequest): Promise<ImageGe
   )
 }
 
+/**
+ * 图像编辑（在已有图像基础上修改）
+ *
+ * content.image 可传 URL 或 data URL 数组
+ */
+export interface ImageEditRequest {
+  model_type: string
+  model: string
+  content: { image: string[]; prompt: string }
+  kwargs?: Record<string, string | number | boolean>
+}
+
+export async function editImage(body: ImageEditRequest): Promise<ImageGenerateResponse> {
+  return fetcher(
+    `/ai/v2/image_edit`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  )
+}
+
 // ---------- 历史会话相关 ----------
 
 export interface ChatSession {

@@ -7,10 +7,20 @@ import remarkGfm from "remark-gfm"
 import remarkBreaks from "remark-breaks"
 import { cn } from "@/lib/utils"
 import { CopyButton } from "./CopyButton"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu"
+import { Send, Copy as CopyIcon, Download } from "lucide-react"
 
 export interface ChatImageItem {
   type: "b64_json" | "url"
   data: string
+  name?: string // 可选的原始文件名
+  mimeType?: string // 可选的 MIME 类型，默认 image/png
+  id?: string // 后端已保存的文件 ID（若已保存）
 }
 
 export interface ChatMessage {
@@ -25,13 +35,48 @@ export interface ChatMessage {
 interface MessageProps {
   message: ChatMessage
   isStreaming?: boolean // 是否正在流式生成（通常用于最后一条 assistant 消息）
+  // 父组件提供时显示"提交"菜单项；回调接收图片内容及推断/生成的文件名
+  onSubmitImage?: (image: ChatImageItem, name: string) => void
 }
 
 function normalizeMarkdownBreakTags(content: string) {
   return content.replace(/<br\s*\/?\s*>/gi, "\n")
 }
 
-export function Message({ message, isStreaming }: MessageProps) {
+// 与 saveFile 调用一致的取名逻辑：未提供名称时按当前时间戳生成
+function resolveImageName(img: ChatImageItem): string {
+  if (img.name && img.name.trim()) return img.name
+  return `generated-${Date.now()}.png`
+}
+
+// base64 转 Blob
+function base64ToBlob(base64: string, mimeType = "image/png"): Blob {
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return new Blob([bytes], { type: mimeType })
+}
+
+async function imageToBlob(img: ChatImageItem): Promise<Blob> {
+  if (img.type === "b64_json") {
+    return base64ToBlob(img.data, img.mimeType ?? "image/png")
+  }
+  const r = await fetch(img.data)
+  return await r.blob()
+}
+
+function triggerDownload(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+export function Message({ message, isStreaming, onSubmitImage }: MessageProps) {
   const isUser = message.role === "user"
   const [reasoningExpanded, setReasoningExpanded] = useState(false)
   // assistant 消息支持切换渲染/源码
@@ -108,17 +153,83 @@ export function Message({ message, isStreaming }: MessageProps) {
               {message.images.map((img, i) => {
                 const src =
                   img.type === "b64_json"
-                    ? `data:image/png;base64,${img.data}`
+                    ? `data:${img.mimeType ?? "image/png"};base64,${img.data}`
                     : img.data
+                const name = resolveImageName(img)
+
+                const handleCopy = async () => {
+                  try {
+                    const blob = await imageToBlob(img)
+                    // 浏览器剪贴板对图像类型限制较多，统一转 PNG
+                    const pngBlob =
+                      blob.type === "image/png"
+                        ? blob
+                        : await new Promise<Blob>((resolve, reject) => {
+                            const image = new Image()
+                            image.crossOrigin = "anonymous"
+                            image.onload = () => {
+                              const canvas = document.createElement("canvas")
+                              canvas.width = image.naturalWidth
+                              canvas.height = image.naturalHeight
+                              const ctx = canvas.getContext("2d")
+                              if (!ctx) return reject(new Error("canvas 不可用"))
+                              ctx.drawImage(image, 0, 0)
+                              canvas.toBlob((b) => {
+                                if (b) resolve(b)
+                                else reject(new Error("转换 PNG 失败"))
+                              }, "image/png")
+                            }
+                            image.onerror = () => reject(new Error("图像加载失败"))
+                            image.src = URL.createObjectURL(blob)
+                          })
+                    await navigator.clipboard.write([
+                      new ClipboardItem({ "image/png": pngBlob }),
+                    ])
+                  } catch (err) {
+                    console.error("复制图像失败:", err)
+                  }
+                }
+
+                const handleSave = async () => {
+                  try {
+                    const blob = await imageToBlob(img)
+                    triggerDownload(blob, name)
+                  } catch (err) {
+                    console.error("保存图像失败:", err)
+                  }
+                }
+
                 return (
-                  <a key={i} href={src} target="_blank" rel="noopener noreferrer">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={src}
-                      alt={`generated-${i}`}
-                      className="max-w-full rounded-md"
-                    />
-                  </a>
+                  <ContextMenu key={i}>
+                    <ContextMenuTrigger asChild>
+                      <a href={src} target="_blank" rel="noopener noreferrer">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={src}
+                          alt={name}
+                          className="max-w-full rounded-md"
+                        />
+                      </a>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent className="w-36">
+                      {onSubmitImage && (
+                        <ContextMenuItem
+                          onClick={() => onSubmitImage(img, name)}
+                        >
+                          <Send size={14} />
+                          提交
+                        </ContextMenuItem>
+                      )}
+                      <ContextMenuItem onClick={handleCopy}>
+                        <CopyIcon size={14} />
+                        复制
+                      </ContextMenuItem>
+                      <ContextMenuItem onClick={handleSave}>
+                        <Download size={14} />
+                        保存
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
                 )
               })}
             </div>
