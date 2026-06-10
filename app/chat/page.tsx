@@ -59,6 +59,7 @@ import {
   updateSession,
   saveFile,
   getFile,
+  getCompressedFile,
   type ChatSession,
   type ModelItem,
   type ModelKwarg,
@@ -244,16 +245,16 @@ export default function ChatPage() {
       }
       setSheetOpen(false)
 
-      // 异步加载历史消息中引用的图像
+      // 异步加载历史消息中引用的图像（仅压缩版，用于快速预览；原图按需在"提交"时再拉取）
       parsed.forEach(async (p: { msg: ChatMessage; imageIds: string[] }) => {
         if (p.imageIds.length === 0) return
         const images: ChatImageItem[] = []
         for (const id of p.imageIds) {
           try {
-            const res = await getFile(id)
+            const res = await getCompressedFile(id)
             images.push({
               type: "b64_json",
-              data: res.data.data,
+              compressedData: res.data.data,
               id,
               name: res.data.filename,
               mimeType: res.data.file_type || "image/png",
@@ -410,6 +411,7 @@ export default function ChatPage() {
         // 异步保存图像到后端，收集返回的文件 ID，用于会话内容持久化
         for (const img of pendingImages) {
           try {
+            if (!img.data) continue
             let base64 = img.data
             let fileType = "image/png"
             let sourceUrl: string | null = null
@@ -974,11 +976,18 @@ export default function ChatPage() {
                           let base64 = img.data
                           let mimeType = img.mimeType ?? "image/png"
                           if (img.type === "url") {
-                            const r = await fetch(img.data)
+                            const r = await fetch(img.data ?? "")
                             mimeType = r.headers.get("content-type") || mimeType
                             const blob = await r.blob()
                             base64 = await blobToBase64(blob)
+                          } else if (!base64 && img.id) {
+                            // 历史会话中只持有压缩 JPEG 预览，提交到附件栏需走 getFile 取回原图
+                            // 必须等原图加载完成后再添加，否则后续 editImage 会拿不到原始数据
+                            const res = await getFile(img.id)
+                            base64 = res.data.data
+                            mimeType = res.data.file_type || mimeType
                           }
+                          if (!base64) throw new Error("原始图像数据为空")
                           imageAttachmentsRef.current?.addImage({
                             name,
                             base64,

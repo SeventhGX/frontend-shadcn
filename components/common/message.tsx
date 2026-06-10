@@ -14,10 +14,14 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import { Send, Copy as CopyIcon, Download } from "lucide-react"
+import { downloadFile } from "@/features/chat/api"
 
 export interface ChatImageItem {
   type: "b64_json" | "url"
-  data: string
+  // 原始图像数据（base64 或 url）。从历史加载时可能不存在，只有 compressedData
+  data?: string
+  // 压缩后的 JPEG base64 数据，用于历史会话快速预览
+  compressedData?: string
   name?: string // 可选的原始文件名
   mimeType?: string // 可选的 MIME 类型，默认 image/png
   id?: string // 后端已保存的文件 ID（若已保存）
@@ -59,9 +63,13 @@ function base64ToBlob(base64: string, mimeType = "image/png"): Blob {
 
 async function imageToBlob(img: ChatImageItem): Promise<Blob> {
   if (img.type === "b64_json") {
-    return base64ToBlob(img.data, img.mimeType ?? "image/png")
+    if (img.data) return base64ToBlob(img.data, img.mimeType ?? "image/png")
+    if (img.compressedData) return base64ToBlob(img.compressedData, "image/jpeg")
+    throw new Error("图像数据为空")
   }
-  const r = await fetch(img.data)
+  const url = img.data ?? ""
+  if (!url) throw new Error("图像 URL 为空")
+  const r = await fetch(url)
   return await r.blob()
 }
 
@@ -153,8 +161,12 @@ export function Message({ message, isStreaming, onSubmitImage }: MessageProps) {
               {message.images.map((img, i) => {
                 const src =
                   img.type === "b64_json"
-                    ? `data:${img.mimeType ?? "image/png"};base64,${img.data}`
-                    : img.data
+                    ? img.data
+                      ? `data:${img.mimeType ?? "image/png"};base64,${img.data}`
+                      : img.compressedData
+                        ? `data:image/jpeg;base64,${img.compressedData}`
+                        : ""
+                    : img.data ?? ""
                 const name = resolveImageName(img)
 
                 const handleCopy = async () => {
@@ -192,6 +204,24 @@ export function Message({ message, isStreaming, onSubmitImage }: MessageProps) {
 
                 const handleSave = async () => {
                   try {
+                    // 已保存到后端的图像：通过 downloadFile 流式拉取原始文件，
+                    // 避免下载历史会话里的压缩 JPEG，也避免 url 类型走前端 fetch 的 CORS 限制
+                    if (img.id) {
+                      const res = await downloadFile(img.id)
+                      let downloadName = name
+                      const disposition = res.headers.get("content-disposition")
+                      if (disposition) {
+                        const m = disposition.match(/filename\*=UTF-8''([^;]+)/i)
+                        if (m) {
+                          try {
+                            downloadName = decodeURIComponent(m[1])
+                          } catch {}
+                        }
+                      }
+                      const blob = await res.blob()
+                      triggerDownload(blob, downloadName)
+                      return
+                    }
                     const blob = await imageToBlob(img)
                     triggerDownload(blob, name)
                   } catch (err) {

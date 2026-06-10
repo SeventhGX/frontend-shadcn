@@ -257,3 +257,23 @@ export async function getFile(fileId: string): Promise<GetFileResponse> {
     { method: 'GET' }
   )
 }
+
+/**
+ * 根据文件 ID 获取压缩后的文件内容
+ */
+export async function getCompressedFile(fileId: string): Promise<GetFileResponse> {
+  return fetcher(
+    `/ai/v1/file_compression?file_id=${encodeURIComponent(fileId)}`,
+    { method: 'GET' }
+  )
+}
+
+/*
+* 根据文件 ID 下载文件（返回原始二进制 Response，由调用方自行 .blob() / .body 处理）
+*/
+export async function downloadFile(fileId: string): Promise<Response> {
+  return fetcher(
+    `/ai/v1/file_download?file_id=${encodeURIComponent(fileId)}`,
+    { method: 'GET' }
+  )
+}
