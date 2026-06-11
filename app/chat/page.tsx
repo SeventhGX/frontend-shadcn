@@ -5,6 +5,7 @@ import {
   Send,
   Bot,
   Trash2,
+  Download,
   History,
   Clock,
   LoaderCircle,
@@ -60,6 +61,7 @@ import {
   saveFile,
   getFile,
   getCompressedFile,
+  downloadSessionWord,
   type ChatSession,
   type ModelItem,
   type ModelKwarg,
@@ -642,6 +644,39 @@ export default function ChatPage() {
     setHistoryCount(0)
   }
 
+  const [isDownloadingSession, setIsDownloadingSession] = useState(false)
+
+  const handleDownloadSession = async () => {
+    if (!currentSessionId || isDownloadingSession) return
+    try {
+      setIsDownloadingSession(true)
+      const res = await downloadSessionWord(currentSessionId)
+      let downloadName = `${currentSessionName || "session"}.docx`
+      const disposition = res.headers.get("content-disposition")
+      if (disposition) {
+        const m = disposition.match(/filename\*=UTF-8''([^;]+)/i)
+        if (m) {
+          try {
+            downloadName = decodeURIComponent(m[1])
+          } catch {}
+        }
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = downloadName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (err) {
+      console.error("下载会话失败:", err)
+    } finally {
+      setIsDownloadingSession(false)
+    }
+  }
+
   return (
     <AuthGuard>
       <div className="h-full flex flex-col gap-2 p-4 overflow-hidden">
@@ -742,12 +777,29 @@ export default function ChatPage() {
             </p>
           </div>
 
+          {messages.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleDownloadSession}
+              disabled={isStreaming || !currentSessionId || isDownloadingSession}
+              className="ml-auto gap-2"
+            >
+              {isDownloadingSession ? (
+                <LoaderCircle size={14} className="animate-spin" />
+              ) : (
+                <Download size={14} />
+              )}
+              下载会话
+            </Button>
+          )}
+
           <Button
             variant="ghost"
             size="sm"
             onClick={clearMessages}
             disabled={isStreaming || messages.length === 0}
-            className="ml-auto gap-2"
+            className={cn("gap-2", messages.length === 0 && "ml-auto")}
           >
             <Trash2 size={14} />
             清空对话

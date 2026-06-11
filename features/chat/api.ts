@@ -277,3 +277,13 @@ export async function downloadFile(fileId: string): Promise<Response> {
     { method: 'GET' }
   )
 }
+
+/*
+* 根据会话 ID 下载会话内容为 Word 文件（返回原始二进制 Response，由调用方自行 .blob() / .body 处理）
+*/
+export async function downloadSessionWord(sessionId: string): Promise<Response> {
+  return fetcher(
+    `/ai/v1/session_word_download?session_id=${encodeURIComponent(sessionId)}`,
+    { method: 'GET' }
+  )
+}
