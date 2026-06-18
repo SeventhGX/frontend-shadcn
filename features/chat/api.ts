@@ -153,6 +153,16 @@ export async function getChatSessionById(sessionId: string) {
 }
 
 /**
+ * 删除会话
+ */
+export async function deleteSession(sessionId: string): Promise<{ message: string; code: number }> {
+  return fetcher(
+    `/ai/v1/delete_session?session_id=${encodeURIComponent(sessionId)}`,
+    { method: 'DELETE' }
+  )
+}
+
+/**
  * 新增会话
  */
 export interface AddSessionRequest {

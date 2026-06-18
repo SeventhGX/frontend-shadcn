@@ -37,6 +37,14 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -56,6 +64,7 @@ import {
   getModels,
   getChatSessions,
   getChatSessionById,
+  deleteSession,
   addSession,
   updateSession,
   saveFile,
@@ -129,6 +138,8 @@ export default function ChatPage() {
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [sessionsLoading, setSessionsLoading] = useState(false)
   const [sessionDetailLoading, setSessionDetailLoading] = useState<string | null>(null) // 正在加载的 sessionId
+  const [deleteTarget, setDeleteTarget] = useState<ChatSession | null>(null)
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
 
   // 模型参数设置面板
   const [paramsOpen, setParamsOpen] = useState(true)
@@ -200,10 +211,7 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  // 打开侧边栏时加载历史会话列表
-  const handleSheetOpenChange = async (open: boolean) => {
-    setSheetOpen(open)
-    if (!open) return
+  const loadSessions = async () => {
     setSessionsLoading(true)
     try {
       const data = await getChatSessions()
@@ -215,6 +223,13 @@ export default function ChatPage() {
     }
   }
 
+  // 打开侧边栏时加载历史会话列表
+  const handleSheetOpenChange = async (open: boolean) => {
+    setSheetOpen(open)
+    if (!open) return
+    await loadSessions()
+  }
+
   // 选中某条历史会话，加载会话内容
   const handleSelectSession = async (session: ChatSession) => {
     if (sessionDetailLoading) return
@@ -223,7 +238,7 @@ export default function ChatPage() {
       const detail = await getChatSessionById(session.id)
       const session_detail = detail.data.content.messages || []
       // 将会话消息转换为页面所用格式；识别 Image-: 前缀的图像引用消息
-      const parsed = session_detail.map((m: { role: string; content: any }, i: any) => {
+      const parsed = session_detail.map((m: { role: string; content: unknown }, i: number) => {
         const content = typeof m.content === "string" ? m.content : ""
         const imageIds = extractImageIds(content)
         const msg: ChatMessage = {
@@ -274,6 +289,27 @@ export default function ChatPage() {
       console.error("获取会话详情失败:", error)
     } finally {
       setSessionDetailLoading(null)
+    }
+  }
+
+  const handleDeleteSession = async () => {
+    if (!deleteTarget || deletingSessionId) return
+    const session = deleteTarget
+    setDeletingSessionId(session.id)
+    try {
+      await deleteSession(session.id)
+      setDeleteTarget(null)
+      await loadSessions()
+      if (currentSessionId === session.id) {
+        setMessages([])
+        setCurrentSessionId(null)
+        setCurrentSessionName("")
+        setHistoryCount(0)
+      }
+    } catch (error) {
+      console.error("删除会话失败:", error)
+    } finally {
+      setDeletingSessionId(null)
     }
   }
 
@@ -712,12 +748,13 @@ export default function ChatPage() {
                   <ul className="divide-y">
                     {sessions.map((session) => {
                       const isLoading = sessionDetailLoading === session.id
+                      const isDeleting = deletingSessionId === session.id
                       return (
-                        <li key={session.id}>
+                        <li key={session.id} className="flex items-stretch gap-1 pr-2 hover:bg-muted transition-colors">
                           <button
                             onClick={() => handleSelectSession(session)}
-                            disabled={!!sessionDetailLoading}
-                            className="w-full text-left px-4 py-3 hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={!!sessionDetailLoading || !!deletingSessionId}
+                            className="min-w-0 flex-1 text-left px-4 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <div className="flex items-start gap-2">
                               {isLoading ? (
@@ -736,6 +773,28 @@ export default function ChatPage() {
                               </div>
                             </div>
                           </button>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="mt-2 h-8 w-8 shrink-0 p-0 text-muted-foreground hover:text-destructive"
+                                disabled={!!sessionDetailLoading || !!deletingSessionId}
+                                onClick={() => setDeleteTarget(session)}
+                                aria-label={`删除会话 ${session.session_name}`}
+                              >
+                                {isDeleting ? (
+                                  <LoaderCircle size={14} className="animate-spin" />
+                                ) : (
+                                  <Trash2 size={14} />
+                                )}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="text-xs">
+                              删除会话
+                            </TooltipContent>
+                          </Tooltip>
                         </li>
                       )
                     })}
@@ -744,6 +803,41 @@ export default function ChatPage() {
               </div>
             </SheetContent>
           </Sheet>
+
+          <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>删除历史会话</DialogTitle>
+                <DialogDescription>
+                  确认删除“{deleteTarget?.session_name || "未命名会话"}”吗？删除后无法从历史会话中恢复。
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={!!deletingSessionId}
+                >
+                  取消
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={handleDeleteSession}
+                  disabled={!!deletingSessionId}
+                  className="gap-2"
+                >
+                  {deletingSessionId ? (
+                    <LoaderCircle size={14} className="animate-spin" />
+                  ) : (
+                    <Trash2 size={14} />
+                  )}
+                  删除
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <Bot size={18} />
           <Label className="font-bold">模型</Label>
