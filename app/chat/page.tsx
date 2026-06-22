@@ -6,26 +6,12 @@ import {
   Bot,
   Trash2,
   Download,
-  History,
-  Clock,
   LoaderCircle,
-  Settings2,
-  ChevronLeft,
-  ChevronRight,
-  HelpCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-import { Slider } from "@/components/ui/slider"
-import { Switch } from "@/components/ui/switch"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import {
   Select,
@@ -36,27 +22,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet"
 import { AuthGuard } from "@/components/common/auth-guard"
 import { Message, type ChatMessage, type ChatImageItem } from "@/components/common/message"
 import {
   ImageAttachments,
   type ImageAttachmentsHandle,
 } from "@/components/common/image-attachments"
+import { HistorySessionSidebar } from "./history-session-sidebar"
+import { ModelParamsPanel } from "./model-params-panel"
 import {
   chatByStream,
   generateImage,
@@ -144,9 +117,6 @@ export default function ChatPage() {
   // 模型参数设置面板
   const [paramsOpen, setParamsOpen] = useState(true)
   const [paramValues, setParamValues] = useState<Record<string, ParamValue>>({})
-  // 当前正处于手动输入模式的数值参数名
-  const [editingParam, setEditingParam] = useState<string | null>(null)
-  const [editingDraft, setEditingDraft] = useState<string>("")
 
   const selectedModelLabel = selectedModel
   const currentModelKwargs: ModelKwarg[] =
@@ -716,128 +686,20 @@ export default function ChatPage() {
   return (
     <AuthGuard>
       <div className="h-full flex flex-col gap-2 p-4 overflow-hidden">
-        {/* 顶部工具栏：模型选择 */}
+        {/* 顶部工具栏 */}
         <div className="flex-none flex items-center gap-3 relative">
-          {/* 历史会话侧边栏 */}
-          <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
-            <SheetTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2">
-                <History size={14} />
-                历史会话
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-72 sm:max-w-xs flex flex-col gap-0 p-0">
-              <SheetHeader className="px-4 py-3 border-b">
-                <SheetTitle className="flex items-center gap-2 text-base">
-                  <History size={16} />
-                  历史会话
-                </SheetTitle>
-              </SheetHeader>
-
-              <div className="flex-1 overflow-y-auto">
-                {sessionsLoading ? (
-                  <div className="flex items-center justify-center h-32 text-muted-foreground">
-                    <LoaderCircle size={18} className="animate-spin mr-2" />
-                    <span className="text-sm">加载中...</span>
-                  </div>
-                ) : sessions.length === 0 ? (
-                  <div className="flex items-center justify-center h-32">
-                    <p className="text-sm text-muted-foreground">暂无历史会话</p>
-                  </div>
-                ) : (
-                  <ul className="divide-y">
-                    {sessions.map((session) => {
-                      const isLoading = sessionDetailLoading === session.id
-                      const isDeleting = deletingSessionId === session.id
-                      return (
-                        <li key={session.id} className="flex items-stretch gap-1 pr-2 hover:bg-muted transition-colors">
-                          <button
-                            onClick={() => handleSelectSession(session)}
-                            disabled={!!sessionDetailLoading || !!deletingSessionId}
-                            className="min-w-0 flex-1 text-left px-4 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <div className="flex items-start gap-2">
-                              {isLoading ? (
-                                <LoaderCircle size={14} className="animate-spin mt-0.5 shrink-0 text-muted-foreground" />
-                              ) : (
-                                <Clock size={14} className="mt-0.5 shrink-0 text-muted-foreground" />
-                              )}
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium truncate">{session.session_name}</p>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                  <span className="text-xs text-muted-foreground">{session.create_time}</span>
-                                  {/* {session.model && (
-                                    <span className="text-xs text-muted-foreground truncate">{session.model}</span>
-                                  )} */}
-                                </div>
-                              </div>
-                            </div>
-                          </button>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="mt-2 h-8 w-8 shrink-0 p-0 text-muted-foreground hover:text-destructive"
-                                disabled={!!sessionDetailLoading || !!deletingSessionId}
-                                onClick={() => setDeleteTarget(session)}
-                                aria-label={`删除会话 ${session.session_name}`}
-                              >
-                                {isDeleting ? (
-                                  <LoaderCircle size={14} className="animate-spin" />
-                                ) : (
-                                  <Trash2 size={14} />
-                                )}
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent side="right" className="text-xs">
-                              删除会话
-                            </TooltipContent>
-                          </Tooltip>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                )}
-              </div>
-            </SheetContent>
-          </Sheet>
-
-          <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>删除历史会话</DialogTitle>
-                <DialogDescription>
-                  确认删除“{deleteTarget?.session_name || "未命名会话"}”吗？删除后无法从历史会话中恢复。
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setDeleteTarget(null)}
-                  disabled={!!deletingSessionId}
-                >
-                  取消
-                </Button>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={handleDeleteSession}
-                  disabled={!!deletingSessionId}
-                  className="gap-2"
-                >
-                  {deletingSessionId ? (
-                    <LoaderCircle size={14} className="animate-spin" />
-                  ) : (
-                    <Trash2 size={14} />
-                  )}
-                  删除
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <HistorySessionSidebar
+            open={sheetOpen}
+            onOpenChange={handleSheetOpenChange}
+            sessions={sessions}
+            sessionsLoading={sessionsLoading}
+            sessionDetailLoading={sessionDetailLoading}
+            deleteTarget={deleteTarget}
+            deletingSessionId={deletingSessionId}
+            onSelectSession={handleSelectSession}
+            onDeleteTargetChange={setDeleteTarget}
+            onConfirmDelete={handleDeleteSession}
+          />
 
           <Bot size={18} />
           <Label className="font-bold">模型</Label>
@@ -904,198 +766,14 @@ export default function ChatPage() {
 
         {/* 主体区域：左侧参数设置 + 右侧消息列表 */}
         <div className="flex-1 min-h-0 flex gap-2">
-          {/* 参数设置面板 */}
-          <aside
-            className={cn(
-              "flex-none flex flex-col border rounded-md bg-card transition-all duration-200",
-              paramsOpen ? "w-72" : "w-10"
-            )}
-          >
-            {paramsOpen ? (
-              <>
-                <div className="flex-none flex items-center justify-between px-3 py-2 border-b">
-                  <div className="flex items-center gap-2">
-                    <Settings2 size={14} />
-                    <span className="text-sm font-medium">参数设置</span>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 w-6 p-0"
-                    onClick={() => setParamsOpen(false)}
-                    title="收起"
-                  >
-                    <ChevronLeft size={14} />
-                  </Button>
-                </div>
-                <div className="flex-1 overflow-y-auto px-3 py-3 space-y-5">
-                  {currentModelKwargs.length === 0 ? (
-                    <p className="text-xs text-muted-foreground text-center pt-4">
-                      当前模型暂无可配置参数
-                    </p>
-                  ) : (
-                    currentModelKwargs.map((kw) => {
-                      const value = paramValues[kw.name]
-                      const labelNode = (
-                        <div className="flex items-center gap-1 min-w-0">
-                          <Label className="text-xs font-medium truncate" title={kw.name}>
-                            {kw.name}
-                          </Label>
-                          {kw.description && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  type="button"
-                                  className="text-muted-foreground hover:text-foreground transition-colors shrink-0 cursor-help"
-                                  aria-label={`${kw.name} 说明`}
-                                >
-                                  <HelpCircle size={12} />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent side="top" className="max-w-xs text-xs">
-                                {kw.description}
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                        </div>
-                      )
-
-                      if (kw.type === "boolean") {
-                        return (
-                          <div key={kw.name} className="flex items-center justify-between gap-3">
-                            {labelNode}
-                            <Switch
-                              checked={Boolean(value)}
-                              onCheckedChange={(v) => setParamValue(kw.name, v)}
-                              disabled={isStreaming}
-                            />
-                          </div>
-                        )
-                      }
-                      if (kw.type === "string") {
-                        const options = kw.option ?? []
-                        return (
-                          <div key={kw.name} className="space-y-2">
-                            {labelNode}
-                            <Select
-                              value={String(value ?? "")}
-                              onValueChange={(v) => setParamValue(kw.name, v)}
-                              disabled={isStreaming || options.length === 0}
-                            >
-                              <SelectTrigger className="w-full h-8">
-                                <SelectValue placeholder="请选择" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {options.map((opt) => (
-                                  <SelectItem key={opt} value={opt}>
-                                    {opt}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        )
-                      }
-                      // number / integer
-                      const step = kw.type === "integer" ? 1 : 0.01
-                      const minV = kw.min ?? 0
-                      const maxV = kw.max ?? 100
-                      const numValue =
-                        typeof value === "number" ? value : Number(kw.default ?? minV)
-                      const isEditing = editingParam === kw.name
-
-                      const commitDraft = () => {
-                        const parsed =
-                          kw.type === "integer"
-                            ? parseInt(editingDraft, 10)
-                            : parseFloat(editingDraft)
-                        if (!Number.isNaN(parsed)) {
-                          const clamped = Math.min(maxV, Math.max(minV, parsed))
-                          setParamValue(
-                            kw.name,
-                            kw.type === "integer" ? Math.round(clamped) : clamped
-                          )
-                        }
-                        setEditingParam(null)
-                      }
-
-                      return (
-                        <div key={kw.name} className="space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            {labelNode}
-                            {isEditing ? (
-                              <Input
-                                type="number"
-                                autoFocus
-                                value={editingDraft}
-                                min={minV}
-                                max={maxV}
-                                step={step}
-                                onChange={(e) => setEditingDraft(e.target.value)}
-                                onBlur={commitDraft}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    e.preventDefault()
-                                    commitDraft()
-                                  } else if (e.key === "Escape") {
-                                    e.preventDefault()
-                                    setEditingParam(null)
-                                  }
-                                }}
-                                disabled={isStreaming}
-                                className="h-6 w-24 px-2 py-0 text-xs tabular-nums"
-                              />
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (isStreaming) return
-                                  setEditingDraft(String(numValue))
-                                  setEditingParam(kw.name)
-                                }}
-                                title="点击手动输入"
-                                className="text-xs tabular-nums text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded px-1.5 py-0.5 transition-colors disabled:opacity-50"
-                                disabled={isStreaming}
-                              >
-                                {numValue}
-                              </button>
-                            )}
-                          </div>
-                          <Slider
-                            value={[numValue]}
-                            min={minV}
-                            max={maxV}
-                            step={step}
-                            disabled={isStreaming}
-                            onValueChange={(v) =>
-                              setParamValue(
-                                kw.name,
-                                kw.type === "integer" ? Math.round(v[0]) : v[0]
-                              )
-                            }
-                          />
-                          <div className="flex justify-between text-[10px] text-muted-foreground tabular-nums">
-                            <span>{minV}</span>
-                            <span>{maxV}</span>
-                          </div>
-                        </div>
-                      )
-                    })
-                  )}
-                </div>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setParamsOpen(true)}
-                className="flex-1 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors rounded-md"
-                title="展开参数设置"
-              >
-                <ChevronRight size={14} />
-                <Settings2 size={14} />
-              </button>
-            )}
-          </aside>
+          <ModelParamsPanel
+            open={paramsOpen}
+            onOpenChange={setParamsOpen}
+            kwargs={currentModelKwargs}
+            values={paramValues}
+            disabled={isStreaming}
+            onValueChange={setParamValue}
+          />
 
           {/* 消息列表区域 */}
           <div className="flex-1 min-w-0 min-h-0 overflow-y-auto space-y-4 py-2 px-1">
