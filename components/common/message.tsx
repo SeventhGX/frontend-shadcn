@@ -13,7 +13,18 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
-import { Send, Copy as CopyIcon, Download } from "lucide-react"
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Send, Copy as CopyIcon, Download, Trash2 } from "lucide-react"
 import { downloadFile } from "@/features/chat/api"
 
 export interface ChatImageItem {
@@ -41,6 +52,7 @@ interface MessageProps {
   isStreaming?: boolean // 是否正在流式生成（通常用于最后一条 assistant 消息）
   // 父组件提供时显示"提交"菜单项；回调接收图片内容及推断/生成的文件名
   onSubmitImage?: (image: ChatImageItem, name: string) => void
+  onDeleteMessage?: (messageId: string) => void
 }
 
 function normalizeMarkdownBreakTags(content: string) {
@@ -84,7 +96,7 @@ function triggerDownload(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export function Message({ message, isStreaming, onSubmitImage }: MessageProps) {
+export function Message({ message, isStreaming, onSubmitImage, onDeleteMessage }: MessageProps) {
   const isUser = message.role === "user"
   const [reasoningExpanded, setReasoningExpanded] = useState(false)
   // assistant 消息支持切换渲染/源码
@@ -156,6 +168,48 @@ export function Message({ message, isStreaming, onSubmitImage }: MessageProps) {
               : "bg-muted text-foreground"
           )}
         >
+          {onDeleteMessage && (
+            <Dialog>
+              <DialogTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="删除消息"
+                  title="删除消息"
+                  className={cn(
+                    "absolute bottom-0/12 z-20 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    isUser ? "-left-9" : "-right-9"
+                  )}
+                  disabled={isStreaming || isReasoning}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>删除消息</DialogTitle>
+                  <DialogDescription>
+                    确认删除这条消息吗？删除后会同步更新当前会话内容。
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button type="button" variant="outline">
+                      取消
+                    </Button>
+                  </DialogClose>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => onDeleteMessage(message.id)}
+                    className="gap-2"
+                  >
+                    <Trash2 size={14} />
+                    删除
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
           {message.images && message.images.length > 0 ? (
             <div className="flex flex-col gap-2">
               {message.images.map((img, i) => {

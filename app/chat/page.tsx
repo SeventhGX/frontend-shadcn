@@ -88,6 +88,30 @@ function buildDefaults(kwargs: ModelKwarg[] | undefined): Record<string, ParamVa
   return out
 }
 
+function chatMessageToRequestMessage(
+  message: ChatMessage,
+  imageOverride?: ChatImageItem[],
+  fallbackImageIds: string[] = []
+): ChatRequestMessage {
+  const images = imageOverride ?? message.images
+  if (images && images.length > 0) {
+    const ids = images
+      .map((image) => image.id)
+      .filter((id): id is string => !!id)
+    if (ids.length > 0) {
+      return {
+        role: message.role,
+        content: ids.map((id) => `${IMAGE_REF_PREFIX}${id}`).join("\n"),
+      }
+    }
+    const content = fallbackImageIds.length > 0
+      ? fallbackImageIds.map((id) => `${IMAGE_REF_PREFIX}${id}`).join("\n")
+      : ""
+    return { role: message.role, content }
+  }
+  return { role: message.role, content: message.content }
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
@@ -280,6 +304,33 @@ export default function ChatPage() {
       console.error("删除会话失败:", error)
     } finally {
       setDeletingSessionId(null)
+    }
+  }
+
+  const handleDeleteMessage = async (messageId: string) => {
+    if (isStreaming) return
+    const currentMessages = messagesRef.current
+    const deleteIndex = currentMessages.findIndex((message) => message.id === messageId)
+    if (deleteIndex < 0) return
+
+    const nextMessages = currentMessages.filter((message) => message.id !== messageId)
+    setMessages(nextMessages)
+    messagesRef.current = nextMessages
+    setHistoryCount((prev) => {
+      if (prev <= 0) return prev
+      return deleteIndex < prev ? Math.max(prev - 1, 0) : prev
+    })
+
+    if (!currentSessionId) return
+
+    try {
+      await updateSession({
+        id: currentSessionId,
+        session_name: currentSessionName,
+        content: { messages: nextMessages.map((message) => chatMessageToRequestMessage(message)) },
+      })
+    } catch (error) {
+      console.error("删除消息后更新会话失败:", error)
     }
   }
 
@@ -550,35 +601,6 @@ export default function ChatPage() {
     } finally {
       setIsStreaming(false)
 
-      // 将 ChatMessage 转换为持久化用的 ChatRequestMessage
-      // - 若消息带图（历史加载/本次会话生成），优先用 image.id 还原 Image-: 引用
-      // - 否则使用 m.content
-      // imageOverride 用于本次生成的 assistant 消息：pendingImages 可能尚未同步到 state
-      const toRequestMessage = (
-        m: ChatMessage,
-        imageOverride?: ChatImageItem[]
-      ): ChatRequestMessage => {
-        const images = imageOverride ?? m.images
-        if (images && images.length > 0) {
-          const ids = images
-            .map((i) => i.id)
-            .filter((x): x is string => !!x)
-          if (ids.length > 0) {
-            return {
-              role: m.role,
-              content: ids.map((id) => `${IMAGE_REF_PREFIX}${id}`).join("\n"),
-            }
-          }
-          // 无 id（理论上不应出现）：回退到本次生成的 savedImageIds
-          const content =
-            savedImageIds.length > 0
-              ? savedImageIds.map((id) => `${IMAGE_REF_PREFIX}${id}`).join("\n")
-              : ""
-          return { role: m.role, content }
-        }
-        return { role: m.role, content: m.content }
-      }
-
       // 流式传输完成后，同步会话到后台
       // 从 ref 读最新 messages，避免在 setState updater 里发请求（Strict Mode 会重复调用）
       const finalMessages: ChatRequestMessage[] = messagesRef.current.map(
@@ -587,9 +609,9 @@ export default function ChatPage() {
             idx === arr.length - 1 && m.role === "assistant"
           // 本次生成的图像可能尚未通过 setState 同步到 ref，这里手动覆盖到最后一条 assistant 消息
           if (isLastAssistant && pendingImages && pendingImages.length > 0) {
-            return toRequestMessage(m, pendingImages)
+            return chatMessageToRequestMessage(m, pendingImages, savedImageIds)
           }
-          return toRequestMessage(m)
+          return chatMessageToRequestMessage(m)
         }
       )
 
@@ -795,6 +817,7 @@ export default function ChatPage() {
                         index === messages.length - 1 &&
                         msg.role === "assistant"
                       }
+                      onDeleteMessage={!isStreaming ? handleDeleteMessage : undefined}
                       onSubmitImage={async (img, name) => {
                         try {
                           let base64 = img.data
