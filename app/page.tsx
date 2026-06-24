@@ -57,7 +57,7 @@ export default function Home() {
         className="pointer-events-none absolute inset-0 -z-10 opacity-70"
         style={{
           backgroundImage:
-            "radial-gradient(circle at 50% 0%, oklch(0.97 0 0), transparent 55%)",
+            "radial-gradient(circle at 50% 0%, oklch(0.9 0 0), transparent 80%)",
         }}
       />
 
@@ -68,7 +68,7 @@ export default function Home() {
           工业智能 · 效率工具集
         </div>
         <h1 className="text-4xl font-bold tracking-tight mb-3">
-          并没有做完也并不知道有多AI的应用平台
+          AI应用平台-持续建设中
         </h1>
         <p className="text-muted-foreground max-w-2xl">
           集成 AI 对话、搜索、文章管理、邮件推送与资料库的一站式工作台。
