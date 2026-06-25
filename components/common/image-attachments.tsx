@@ -171,7 +171,7 @@ export const ImageAttachments = React.forwardRef<
         添加图片
       </Button>
 
-      <Separator orientation="vertical" className="!h-4" />
+      <Separator orientation="vertical" className="h-4!" />
 
       <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
         {images.length === 0 ? (
@@ -186,7 +186,7 @@ export const ImageAttachments = React.forwardRef<
                     className="shrink-0 text-muted-foreground"
                   />
                   <span
-                    className="max-w-[140px] truncate"
+                    className="max-w-35 truncate"
                     title={img.name}
                   >
                     {img.name}
