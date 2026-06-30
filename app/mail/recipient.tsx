@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type Dispatch, type SetStateAction } from "react"
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react"
 import { ChevronsUpDown, Plus, UserPlus, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -26,6 +26,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { Separator } from "@/components/ui/separator"
+import {
+  getAllRecipients,
+  addRecipient,
+  // type recipientData
+} from "@/features/recipient/api"
 
 interface Contact {
   mail: string
@@ -213,6 +218,9 @@ function ContactSelector({
 }
 
 export function Recipient() {
+  useEffect(() => {
+    // Your effect logic here
+  }, []);
   const [contacts, setContacts] = useState<Contact[]>(
     recipientData.map((c) => ({ ...c }))
   )
