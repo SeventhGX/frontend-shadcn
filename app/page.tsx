@@ -9,6 +9,7 @@ import {
   Database,
   ArrowUpRight,
   Sparkles,
+  DatabaseSearch,
 } from "lucide-react"
 
 const features = [
@@ -42,11 +43,18 @@ const features = [
   },
   {
     href: "/database",
-    title: "资料库",
+    title: "历史数据查询",
     description: "按多维度筛选已收录文章，生成结论与导出。",
-    icon: Database,
-    badge: "资料",
+    icon: DatabaseSearch,
+    badge: "查询",
   },
+  {
+    href: "/knowledge",
+    title: "知识库",
+    description: "构建个人知识库，支持多种数据源的接入与管理。",
+    icon: Database,
+    badge: "知识",
+  }
 ]
 
 export default function Home() {
