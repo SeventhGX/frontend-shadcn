@@ -17,6 +17,7 @@ import {
   type KnowledgeFile,
 } from "@/features/knowledge/api"
 import { KnowledgeDataTable } from "./data-table"
+import { KnowledgeChatPanel } from "./chat-panel"
 
 export default function KnowledgePage() {
   const [files, setFiles] = React.useState<KnowledgeFile[]>([])
@@ -70,13 +71,23 @@ export default function KnowledgePage() {
     if (fileIds.length === 0) return
     try {
       setEmbedding(true)
-      // TODO: 后端编码接口尚未完成，接口就绪后此处即可正常工作
-      await embedKnowledgeFiles(fileIds)
-      toast.success("已提交编码任务")
+      const res = await embedKnowledgeFiles(fileIds)
+      const results = res?.data ?? []
+      const totalChunks = results.reduce(
+        (sum, item) => sum + (item.chunk_count ?? 0),
+        0
+      )
+      if (results.length > 0) {
+        toast.success(
+          `已完成 ${results.length} 个文件编码，共生成 ${totalChunks} 个片段`
+        )
+      } else {
+        toast.info("所选文件均已编码，无需重复处理")
+      }
       await fetchFiles()
     } catch (error) {
       console.error(error)
-      toast.error("编码失败（后端接口尚未完成）")
+      toast.error("编码失败，请稍后重试")
     } finally {
       setEmbedding(false)
     }
@@ -85,13 +96,21 @@ export default function KnowledgePage() {
   const handleDelete = async (fileIds: string[]) => {
     if (fileIds.length === 0) return
     try {
-      // TODO: 后端删除接口尚未完成，接口就绪后此处即可正常工作
-      await deleteKnowledgeFiles(fileIds)
-      toast.success("删除成功")
+      const res = await deleteKnowledgeFiles(fileIds)
+      const deletedCount = res?.data?.deleted_count ?? 0
+      if (deletedCount === 0) {
+        toast.error("删除失败，未删除任何文件")
+      } else if (deletedCount < fileIds.length) {
+        toast.warning(
+          `已删除 ${deletedCount} 个文件，部分文件未删除（可能不存在或无权限）`
+        )
+      } else {
+        toast.success(`已删除 ${deletedCount} 个文件`)
+      }
       await fetchFiles()
     } catch (error) {
       console.error(error)
-      toast.error("删除失败（后端接口尚未完成）")
+      toast.error("删除失败，请稍后重试")
     }
   }
 
@@ -123,12 +142,13 @@ export default function KnowledgePage() {
 
           <ResizableHandle withHandle />
 
-          {/* 右侧：AI 对话区域（待后续开发） */}
+          {/* 右侧：知识库 RAG 问答 */}
           <ResizablePanel defaultSize={45} minSize={30}>
-            <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-2 p-4">
-              <span className="text-lg font-medium">AI 对话区域</span>
-              {/* TODO: 待知识库问答对话设计完成后在此实现 */}
-              <span className="text-sm">敬请期待</span>
+            <div className="flex h-full flex-col gap-3 p-4">
+              <h1 className="text-xl font-bold">知识库问答</h1>
+              <div className="min-h-0 flex-1">
+                <KnowledgeChatPanel files={files} />
+              </div>
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>
