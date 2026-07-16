@@ -40,6 +40,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50]
 
@@ -77,6 +86,10 @@ export function KnowledgeDataTable({
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
   const [page, setPage] = React.useState(1)
   const [pageSize, setPageSize] = React.useState(10)
+  // 待删除确认的文件 ID（null 表示未打开确认弹窗）
+  const [deleteTargetIds, setDeleteTargetIds] = React.useState<string[] | null>(
+    null
+  )
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   // 根据文件名过滤
@@ -142,6 +155,36 @@ export function KnowledgeDataTable({
 
   const selectedCount = selectedIds.size
 
+  // 打开删除确认弹窗
+  const requestDelete = (fileIds: string[]) => {
+    if (fileIds.length > 0) {
+      setDeleteTargetIds(fileIds)
+    }
+  }
+
+  // 待删除文件对应的条目（用于弹窗展示文件名）
+  const deleteTargetFiles = React.useMemo(
+    () =>
+      deleteTargetIds
+        ? data.filter((item) => deleteTargetIds.includes(item.file_id))
+        : [],
+    [data, deleteTargetIds]
+  )
+
+  // 确认删除
+  const confirmDelete = () => {
+    if (!deleteTargetIds) return
+    const ids = deleteTargetIds
+    onDelete?.(ids)
+    // 乐观地从选择集中移除已删除项
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      ids.forEach((id) => next.delete(id))
+      return next
+    })
+    setDeleteTargetIds(null)
+  }
+
   return (
     <div className="flex h-full flex-col gap-3">
       {/* 隐藏的文件上传输入 */}
@@ -152,6 +195,45 @@ export function KnowledgeDataTable({
         className="hidden"
         onChange={handleFileChange}
       />
+
+      {/* 删除确认弹窗 */}
+      <Dialog
+        open={deleteTargetIds !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTargetIds(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除文件</DialogTitle>
+            <DialogDescription>
+              确认删除以下 {deleteTargetFiles.length} 个文件吗？已编码的文件会同步删除其切片与向量内容，操作不可恢复。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-52 overflow-y-auto rounded-md border">
+            <ul className="divide-y text-sm">
+              {deleteTargetFiles.map((file) => (
+                <li
+                  key={file.file_id}
+                  className="truncate px-3 py-1.5"
+                  title={file.filename}
+                >
+                  {file.filename}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">取消</Button>
+            </DialogClose>
+            <Button variant="destructive" onClick={confirmDelete}>
+              <Trash2 size={16} />
+              删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* 工具栏 */}
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -193,7 +275,7 @@ export function KnowledgeDataTable({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => onDelete?.(Array.from(selectedIds))}
+            onClick={() => requestDelete(Array.from(selectedIds))}
             disabled={selectedCount === 0}
           >
             <Trash2 size={16} />
@@ -281,7 +363,7 @@ export function KnowledgeDataTable({
                       )}
                     </TableCell>
                     <TableCell>
-                      <DropdownMenu>
+                      <DropdownMenu modal={false}>
                         <DropdownMenuTrigger asChild>
                           <Button
                             variant="ghost"
@@ -303,7 +385,7 @@ export function KnowledgeDataTable({
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             variant="destructive"
-                            onClick={() => onDelete?.([item.file_id])}
+                            onClick={() => requestDelete([item.file_id])}
                           >
                             <Trash2 size={16} />
                             删除
