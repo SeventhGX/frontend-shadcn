@@ -3,8 +3,9 @@
 import Link from "next/link"
 import { useAuth } from "@/app/providers"
 import { Button } from "@/components/ui/button"
-import { BookOpen, Home, LogOut, User } from "lucide-react"
+import { BookOpen, Home, LogOut, Pencil, User } from "lucide-react"
 import { usePathname } from "next/navigation"
+import { canEditDocs } from "@/lib/auth"
 
 /**
  * 全局顶部导航栏
@@ -53,6 +54,14 @@ export function Navbar() {
         <div className="ml-auto flex items-center gap-2">
           {isAuthenticated && user ? (
             <>
+              {canEditDocs(user) && (
+                <Link href="/docs-edit" target="_blank">
+                  <Button variant="ghost" size="sm" className="gap-2">
+                    <Pencil size={16} />
+                    教程编辑
+                  </Button>
+                </Link>
+              )}
               <div className="flex items-center gap-2 px-3 py-1 rounded-md">
                 <User size={14} />
                 <span className="text-sm font-medium">{user.user_code + ' ' + user.user_name}</span>

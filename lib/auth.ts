@@ -134,6 +134,14 @@ export function clearAuth(): void {
   removeUser()
 }
 
+/**
+ * 是否有教程编辑权限。
+ * 目前仅判断是否登录，登录即可编辑；后续接入后端权限接口后再细化。
+ */
+export function canEditDocs(user: User | null): boolean {
+  return !!user
+}
+
 // ==================== API 调用 ====================
 
 /**
