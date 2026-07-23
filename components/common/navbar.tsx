@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useAuth } from "@/app/providers"
 import { Button } from "@/components/ui/button"
-import { Home, LogOut, User } from "lucide-react"
+import { BookOpen, Home, LogOut, User } from "lucide-react"
 import { usePathname } from "next/navigation"
 
 /**
@@ -30,6 +30,22 @@ export function Navbar() {
           <Button variant="ghost" size="sm" className="gap-2">
             <Home size={16} />
             首页
+          </Button>
+        </Link>
+
+        {/* 教程入口：每次新开标签页，携带来源路由供文档页匹配对应文档 */}
+        <Link
+          href={
+            pathname.startsWith("/docs")
+              ? "/docs"
+              : `/docs?from=${encodeURIComponent(pathname)}`
+          }
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <Button variant="ghost" size="sm" className="gap-2">
+            <BookOpen size={16} />
+            教程
           </Button>
         </Link>
 
