@@ -3,8 +3,9 @@
 import Link from "next/link"
 import { useAuth } from "@/app/providers"
 import { Button } from "@/components/ui/button"
-import { Home, LogOut, User } from "lucide-react"
+import { BookOpen, Home, LogOut, Pencil, User } from "lucide-react"
 import { usePathname } from "next/navigation"
+import { canEditDocs } from "@/lib/auth"
 
 /**
  * 全局顶部导航栏
@@ -33,10 +34,34 @@ export function Navbar() {
           </Button>
         </Link>
 
+        {/* 教程入口：每次新开标签页，携带来源路由供文档页匹配对应文档 */}
+        <Link
+          href={
+            pathname.startsWith("/docs")
+              ? "/docs"
+              : `/docs?from=${encodeURIComponent(pathname)}`
+          }
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <Button variant="ghost" size="sm" className="gap-2">
+            <BookOpen size={16} />
+            教程
+          </Button>
+        </Link>
+
         {/* 右侧：用户信息和登录/注销 */}
         <div className="ml-auto flex items-center gap-2">
           {isAuthenticated && user ? (
             <>
+              {canEditDocs(user) && (
+                <Link href="/docs-edit" target="_blank">
+                  <Button variant="ghost" size="sm" className="gap-2">
+                    <Pencil size={16} />
+                    教程编辑
+                  </Button>
+                </Link>
+              )}
               <div className="flex items-center gap-2 px-3 py-1 rounded-md">
                 <User size={14} />
                 <span className="text-sm font-medium">{user.user_code + ' ' + user.user_name}</span>
