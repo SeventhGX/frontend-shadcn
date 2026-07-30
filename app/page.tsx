@@ -10,6 +10,7 @@ import {
   ArrowUpRight,
   Sparkles,
   DatabaseSearch,
+  FlaskConical,
 } from "lucide-react"
 
 const features = [
@@ -54,6 +55,13 @@ const features = [
     description: "构建个人知识库，支持多种数据源的接入与管理。",
     icon: Database,
     badge: "知识",
+  },
+  {
+    href: "/demo",
+    title: "机器学习演示",
+    description: "在线配置参数训练模型，实时查看预测指标、结果图并导出数据。",
+    icon: FlaskConical,
+    badge: "演示",
   }
 ]
 
