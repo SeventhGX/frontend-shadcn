@@ -4,7 +4,7 @@ import * as React from "react"
 import { Download, FileSpreadsheet, FileText, ImageIcon, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import type { LstmMetrics, LstmTrainResult } from "@/features/demo/api"
+import type { LstmEpochProgress, LstmMetrics, LstmTrainResult } from "@/features/demo/api"
 
 interface ResultPanelProps {
   /** 训练结果，未训练时为 null */
@@ -17,6 +17,10 @@ interface ResultPanelProps {
   imageError: boolean
   /** 是否正在训练 */
   training: boolean
+  /** 最近一轮训练进度 */
+  progress: LstmEpochProgress | null
+  /** 是否进入预测阶段 */
+  predicting: boolean
   onDownloadCsv: () => void
   onDownloadExcel: () => void
   onSaveImage: () => void
@@ -43,17 +47,14 @@ export function ResultPanel({
   imageLoading,
   imageError,
   training,
+  progress,
+  predicting,
   onDownloadCsv,
   onDownloadExcel,
   onSaveImage,
 }: ResultPanelProps) {
   if (training) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
-        <Loader2 className="size-8 animate-spin" />
-        <p className="text-sm">模型训练中，请稍候…</p>
-      </div>
-    )
+    return <TrainingProgress progress={progress} predicting={predicting} />
   }
 
   if (!result) {
@@ -115,6 +116,58 @@ export function ResultPanel({
             className="max-h-full max-w-full object-contain"
           />
         ) : null}
+      </div>
+    </div>
+  )
+}
+
+interface TrainingProgressProps {
+  progress: LstmEpochProgress | null
+  predicting: boolean
+}
+
+/** 训练过程中的动态进度：进度条 + 当前轮次与实时 Loss */
+function TrainingProgress({ progress, predicting }: TrainingProgressProps) {
+  const percent = progress
+    ? Math.min(100, Math.round((progress.epoch / progress.total_epochs) * 100))
+    : 0
+
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-5 px-8">
+      <div className="flex items-center gap-3 text-muted-foreground">
+        <Loader2 className="size-6 animate-spin" />
+        <p className="text-sm">
+          {predicting
+            ? "训练完成，正在生成预测结果…"
+            : progress
+              ? `模型训练中 · 第 ${progress.epoch}/${progress.total_epochs} 轮`
+              : "正在初始化训练…"}
+        </p>
+      </div>
+
+      <div className="w-full max-w-md">
+        <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-primary transition-all duration-300"
+            style={{ width: `${predicting ? 100 : percent}%` }}
+          />
+        </div>
+        {progress && (
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="rounded-lg border bg-card p-3">
+              <p className="text-xs text-muted-foreground">训练集 Loss</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums">
+                {progress.train_loss.toFixed(5)}
+              </p>
+            </div>
+            <div className="rounded-lg border bg-card p-3">
+              <p className="text-xs text-muted-foreground">验证集 Loss</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums">
+                {progress.validation_loss.toFixed(5)}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

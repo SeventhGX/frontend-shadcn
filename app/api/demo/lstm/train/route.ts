@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 
 export const runtime = 'nodejs'
-// 训练为同步长请求（可达数十秒），需放宽超时，避免走通用 rewrite 代理被缓冲/超时
+// 训练为长耗时请求（可达数十秒），以 SSE 流式返回进度，需放宽超时并禁用缓冲
 export const maxDuration = 600
 
 export async function POST(request: NextRequest) {
@@ -24,12 +24,20 @@ export async function POST(request: NextRequest) {
     body,
   })
 
-  const respText = await backendRes.text()
-  return new Response(respText, {
-    status: backendRes.status,
+  if (!backendRes.ok) {
+    return new Response(backendRes.body, {
+      status: backendRes.status,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  // 将后端 SSE 流直接透传给客户端，不做缓冲
+  return new Response(backendRes.body, {
     headers: {
-      'Content-Type':
-        backendRes.headers.get('content-type') || 'application/json',
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
     },
   })
 }

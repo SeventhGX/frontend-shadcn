@@ -26,6 +26,7 @@ import {
   getLstmParamList,
   trainLstm,
   type DemoItem,
+  type LstmEpochProgress,
   type LstmParamNode,
   type LstmTrainResult,
 } from "@/features/demo/api"
@@ -85,6 +86,10 @@ export default function DemoPage() {
 
   const [training, setTraining] = React.useState(false)
   const [result, setResult] = React.useState<LstmTrainResult | null>(null)
+
+  // 训练过程中的进度：最近一轮 epoch 事件与是否进入预测阶段
+  const [progress, setProgress] = React.useState<LstmEpochProgress | null>(null)
+  const [predicting, setPredicting] = React.useState(false)
 
   const [imageUrl, setImageUrl] = React.useState("")
   const [imageLoading, setImageLoading] = React.useState(false)
@@ -167,19 +172,24 @@ export default function DemoPage() {
     try {
       setTraining(true)
       setResult(null)
+      setProgress(null)
+      setPredicting(false)
       const body = buildRequestBody(paramNodes, values)
-      const res = await trainLstm(body)
-      if (res?.data) {
-        setResult(res.data)
-        toast.success("训练完成")
-      } else {
-        toast.error("训练返回结果为空")
-      }
+      const data = await trainLstm(body, {
+        onEpoch: (p) => {
+          setProgress(p)
+          setPredicting(false)
+        },
+        onPredicting: () => setPredicting(true),
+      })
+      setResult(data)
+      toast.success("训练完成")
     } catch (error) {
       console.error(error)
-      toast.error("训练失败，请检查参数后重试")
+      toast.error(error instanceof Error ? error.message : "训练失败，请检查参数后重试")
     } finally {
       setTraining(false)
+      setPredicting(false)
     }
   }
 
@@ -289,6 +299,8 @@ export default function DemoPage() {
                 imageLoading={imageLoading}
                 imageError={imageError}
                 training={training}
+                progress={progress}
+                predicting={predicting}
                 onDownloadCsv={handleDownloadCsv}
                 onDownloadExcel={handleDownloadExcel}
                 onSaveImage={handleSaveImage}

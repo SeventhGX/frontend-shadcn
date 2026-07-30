@@ -11,6 +11,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import type { LstmParamNode } from "@/features/demo/api"
 
 interface ParamPanelProps {
@@ -108,9 +113,20 @@ function ParamField({ node, path, value, onChange, disabled }: ParamFieldProps) 
   return (
     <div className="grid grid-cols-[1fr_auto] items-center gap-3">
       <div className="min-w-0">
-        <Label htmlFor={path} className="truncate">
-          {node.desc || node.name}
-        </Label>
+        {node.desc ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Label htmlFor={path} className="w-fit cursor-help truncate">
+                {node.desc}
+              </Label>
+            </TooltipTrigger>
+            <TooltipContent>{node.name}</TooltipContent>
+          </Tooltip>
+        ) : (
+          <Label htmlFor={path} className="truncate">
+            {node.name}
+          </Label>
+        )}
         {rangeHint && (
           <p className="mt-0.5 text-xs text-muted-foreground">{rangeHint}</p>
         )}
