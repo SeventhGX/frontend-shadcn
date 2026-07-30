@@ -17,7 +17,7 @@ import {
   type KnowledgeChunk,
   type KnowledgeFile,
 } from "@/features/knowledge/api"
-import { cn } from "@/lib/utils"
+import { cn, uuid } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -161,7 +161,7 @@ export function KnowledgeChatPanel({ files }: KnowledgeChatPanelProps) {
     if (!query || sending) return
 
     const userMessage: RagMessage = {
-      id: crypto.randomUUID(),
+      id: uuid(),
       role: "user",
       content: query,
     }
@@ -173,7 +173,7 @@ export function KnowledgeChatPanel({ files }: KnowledgeChatPanelProps) {
       const res = await chatKnowledge(query, effectiveFileIds, TOP_K)
       const data = res?.data
       const assistantMessage: RagMessage = {
-        id: crypto.randomUUID(),
+        id: uuid(),
         role: "assistant",
         content: data?.answer ?? "",
         chunks: data?.chunks ?? [],
@@ -185,7 +185,7 @@ export function KnowledgeChatPanel({ files }: KnowledgeChatPanelProps) {
       setMessages((prev) => [
         ...prev,
         {
-          id: crypto.randomUUID(),
+          id: uuid(),
           role: "assistant",
           content: "抱歉，问答失败，请稍后重试。",
         },
