@@ -2,6 +2,8 @@
 import { useState } from "react"
 import { Check, Copy } from "lucide-react"
 
+import { copyToClipboard } from "@/lib/utils"
+
 export function CopyButton({ text, className }: { text: string, className?: string }) {
   const [copied, setCopied] = useState(false)
   return (
@@ -10,7 +12,8 @@ export function CopyButton({ text, className }: { text: string, className?: stri
       title="复制 Markdown 源码"
       onClick={async (e) => {
         e.preventDefault()
-        await navigator.clipboard.writeText(text)
+        const ok = await copyToClipboard(text)
+        if (!ok) return
         setCopied(true)
         setTimeout(() => setCopied(false), 1200)
       }}
