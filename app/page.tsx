@@ -67,7 +67,7 @@ const features = [
 
 export default function Home() {
   return (
-    <div className="h-full w-full flex flex-col items-center justify-center p-8 relative overflow-hidden">
+    <div className="min-h-full w-full flex flex-col items-center justify-center p-8 relative">
       {/* 背景装饰：柔和径向渐变，增加层次感但不喧宾夺主 */}
       <div
         className="pointer-events-none absolute inset-0 -z-10 opacity-70"
