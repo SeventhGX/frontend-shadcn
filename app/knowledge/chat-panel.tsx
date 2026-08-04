@@ -9,6 +9,7 @@ import {
   Filter,
   Search,
   Send,
+  SlidersHorizontal,
 } from "lucide-react"
 
 import {
@@ -16,10 +17,13 @@ import {
   retrieveKnowledge,
   type KnowledgeChunk,
   type KnowledgeFile,
+  type RetrievalMethod,
 } from "@/features/knowledge/api"
 import { cn, uuid } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Slider } from "@/components/ui/slider"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -44,6 +48,179 @@ interface KnowledgeChatPanelProps {
 
 const TOP_K = 10
 
+const RETRIEVAL_METHOD_OPTIONS: Array<{
+  value: RetrievalMethod
+  label: string
+}> = [
+  { value: "vector", label: "向量检索" },
+  { value: "hybrid", label: "混合检索" },
+]
+
+/** 权重数值：默认展示百分比，点击后可手动输入 */
+function WeightValueEditor({
+  value,
+  disabled,
+  onCommit,
+  label,
+}: {
+  value: number
+  disabled?: boolean
+  onCommit: (value: number) => void
+  label: string
+}) {
+  const [editing, setEditing] = React.useState(false)
+  const [draft, setDraft] = React.useState("")
+
+  const commitDraft = () => {
+    const parsed = Number(draft)
+    if (!Number.isNaN(parsed)) {
+      onCommit(Math.round(Math.min(100, Math.max(0, parsed))))
+    }
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <Input
+        type="number"
+        autoFocus
+        value={draft}
+        min={0}
+        max={100}
+        step={1}
+        disabled={disabled}
+        aria-label={label}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commitDraft}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault()
+            commitDraft()
+          } else if (e.key === "Escape") {
+            e.preventDefault()
+            setEditing(false)
+          }
+        }}
+        className="h-6 w-14 px-2 py-0 text-xs tabular-nums"
+      />
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (disabled) return
+        setDraft(String(value))
+        setEditing(true)
+      }}
+      title="点击手动输入"
+      disabled={disabled}
+      className="text-muted-foreground hover:text-foreground rounded px-1.5 py-0.5 text-xs tabular-nums transition-colors hover:bg-muted/50 disabled:opacity-50 w-12 text-right"
+    >
+      {value}%
+    </button>
+  )
+}
+
+/** 检索参数设置：方式切换 + 混合检索时的权重联动滑块 */
+function RetrievalSettings({
+  retrievalMethod,
+  onRetrievalMethodChange,
+  semanticPercent,
+  onSemanticPercentChange,
+  disabled,
+}: {
+  retrievalMethod: RetrievalMethod
+  onRetrievalMethodChange: (method: RetrievalMethod) => void
+  semanticPercent: number
+  onSemanticPercentChange: (percent: number) => void
+  disabled?: boolean
+}) {
+  const keywordPercent = 100 - semanticPercent
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md border bg-card px-2.5 py-2">
+      <div className="flex items-center gap-2">
+        <SlidersHorizontal
+          size={14}
+          className="text-muted-foreground shrink-0"
+        />
+        <span className="text-xs font-medium">检索方式</span>
+        <div
+          role="group"
+          aria-label="检索方式"
+          className="bg-muted inline-flex rounded-md p-0.5"
+        >
+          {RETRIEVAL_METHOD_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={retrievalMethod === option.value}
+              disabled={disabled}
+              onClick={() => onRetrievalMethodChange(option.value)}
+              className={cn(
+                "rounded px-2.5 py-1 text-xs font-medium transition-colors",
+                retrievalMethod === option.value
+                  ? "bg-background text-foreground shadow-sm dark:bg-input/30"
+                  : "text-muted-foreground hover:text-foreground",
+                disabled && "pointer-events-none opacity-50"
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {retrievalMethod === "hybrid" && (
+        <div className="flex min-w-[220px] flex-1 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-4">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-muted-foreground w-10 shrink-0">语义</span>
+            <Slider
+              value={[semanticPercent]}
+              min={0}
+              max={100}
+              step={1}
+              disabled={disabled}
+              aria-label="语义权重"
+              className="min-w-20 flex-1"
+              onValueChange={(values) => onSemanticPercentChange(values[0])}
+            />
+            <WeightValueEditor
+              value={semanticPercent}
+              disabled={disabled}
+              label="语义权重"
+              onCommit={onSemanticPercentChange}
+            />
+          </div>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-muted-foreground w-10 shrink-0">关键词</span>
+            <Slider
+              value={[keywordPercent]}
+              min={0}
+              max={100}
+              step={1}
+              disabled={disabled}
+              aria-label="关键词权重"
+              className="min-w-20 flex-1"
+              onValueChange={(values) =>
+                onSemanticPercentChange(100 - values[0])
+              }
+            />
+            <WeightValueEditor
+              value={keywordPercent}
+              disabled={disabled}
+              label="关键词权重"
+              onCommit={(value) => onSemanticPercentChange(100 - value)}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** 单个召回片段展示 */
 function ChunkCard({ chunk }: { chunk: KnowledgeChunk }) {
   const [expanded, setExpanded] = React.useState(false)
@@ -51,6 +228,15 @@ function ChunkCard({ chunk }: { chunk: KnowledgeChunk }) {
   const header =
     (chunk.meta_data?.["Header 2"] as string | undefined) ??
     (chunk.meta_data?.["Header 1"] as string | undefined)
+  const semanticScore =
+    typeof chunk.semantic_score === "number"
+      ? chunk.semantic_score
+      : chunk.score
+  const keywordScore =
+    typeof chunk.keyword_score === "number" ? chunk.keyword_score : null
+  const isHybrid =
+    (chunk.retrieval_method ?? (keywordScore !== null ? "hybrid" : "vector")) ===
+    "hybrid"
 
   return (
     <div className="rounded-md border bg-background/60 text-xs">
@@ -76,9 +262,22 @@ function ChunkCard({ chunk }: { chunk: KnowledgeChunk }) {
         </Badge>
       </button>
       {expanded && (
-        <p className="text-muted-foreground border-t px-2.5 py-2 whitespace-pre-wrap">
-          {chunk.content}
-        </p>
+        <div className="space-y-2 border-t px-2.5 py-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge variant="secondary">综合 {chunk.score.toFixed(3)}</Badge>
+            {isHybrid && keywordScore !== null && (
+              <>
+                <Badge variant="outline">语义 {semanticScore.toFixed(3)}</Badge>
+                <Badge variant="outline">
+                  关键词 {keywordScore.toFixed(3)}
+                </Badge>
+              </>
+            )}
+          </div>
+          <p className="text-muted-foreground whitespace-pre-wrap">
+            {chunk.content}
+          </p>
+        </div>
       )}
     </div>
   )
@@ -116,6 +315,11 @@ export function KnowledgeChatPanel({ files }: KnowledgeChatPanelProps) {
   // 问答范围：为空表示检索全部已编码知识库
   const [scopeIds, setScopeIds] = React.useState<string[]>([])
 
+  // 检索参数
+  const [retrievalMethod, setRetrievalMethod] =
+    React.useState<RetrievalMethod>("vector")
+  const [semanticPercent, setSemanticPercent] = React.useState(70)
+
   // 问答状态
   const [messages, setMessages] = React.useState<RagMessage[]>([])
   const [input, setInput] = React.useState("")
@@ -130,6 +334,8 @@ export function KnowledgeChatPanel({ files }: KnowledgeChatPanelProps) {
   const [retrieved, setRetrieved] = React.useState(false)
 
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
+  const chatComposingRef = React.useRef(false)
+  const retrieveComposingRef = React.useRef(false)
 
   // 移除已不存在（如被删除/取消编码）的范围文件
   React.useEffect(() => {
@@ -170,7 +376,18 @@ export function KnowledgeChatPanel({ files }: KnowledgeChatPanelProps) {
 
     try {
       setSending(true)
-      const res = await chatKnowledge(query, effectiveFileIds, TOP_K)
+      const res = await chatKnowledge({
+        query,
+        file_ids: effectiveFileIds,
+        top_k: TOP_K,
+        retrieval_method: retrievalMethod,
+        ...(retrievalMethod === "hybrid"
+          ? {
+              semantic_weight: semanticPercent / 100,
+              keyword_weight: (100 - semanticPercent) / 100,
+            }
+          : {}),
+      })
       const data = res?.data
       const assistantMessage: RagMessage = {
         id: uuid(),
@@ -200,7 +417,18 @@ export function KnowledgeChatPanel({ files }: KnowledgeChatPanelProps) {
     if (!query || retrieving) return
     try {
       setRetrieving(true)
-      const res = await retrieveKnowledge(query, effectiveFileIds, TOP_K)
+      const res = await retrieveKnowledge({
+        query,
+        file_ids: effectiveFileIds,
+        top_k: TOP_K,
+        retrieval_method: retrievalMethod,
+        ...(retrievalMethod === "hybrid"
+          ? {
+              semantic_weight: semanticPercent / 100,
+              keyword_weight: (100 - semanticPercent) / 100,
+            }
+          : {}),
+      })
       setRetrieveResults(res?.data ?? [])
       setRetrieved(true)
     } catch (error) {
@@ -213,9 +441,18 @@ export function KnowledgeChatPanel({ files }: KnowledgeChatPanelProps) {
 
   const handleInputKeyDown = (
     e: React.KeyboardEvent<HTMLTextAreaElement>,
-    onEnter: () => void
+    onEnter: () => void,
+    isComposingRef: { current: boolean }
   ) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    // 中文输入法候选期间的 Enter 不触发发送
+    // （部分浏览器在 IME 中 e.key 为 "Process" 或 keyCode 为 229）
+    if (
+      e.key === "Enter" &&
+      !e.shiftKey &&
+      !e.nativeEvent.isComposing &&
+      !isComposingRef.current &&
+      e.keyCode !== 229
+    ) {
       e.preventDefault()
       onEnter()
     }
@@ -260,6 +497,14 @@ export function KnowledgeChatPanel({ files }: KnowledgeChatPanelProps) {
         </TabsList>
         {scopeSelector}
       </div>
+
+      <RetrievalSettings
+        retrievalMethod={retrievalMethod}
+        onRetrievalMethodChange={setRetrievalMethod}
+        semanticPercent={semanticPercent}
+        onSemanticPercentChange={setSemanticPercent}
+        disabled={noEmbedded}
+      />
 
       {noEmbedded && (
         <div className="text-muted-foreground rounded-md border border-dashed p-3 text-center text-sm">
@@ -306,7 +551,11 @@ export function KnowledgeChatPanel({ files }: KnowledgeChatPanelProps) {
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => handleInputKeyDown(e, handleSend)}
+            onKeyDown={(e) =>
+              handleInputKeyDown(e, handleSend, chatComposingRef)
+            }
+            onCompositionStart={() => (chatComposingRef.current = true)}
+            onCompositionEnd={() => (chatComposingRef.current = false)}
             placeholder={
               noEmbedded ? "请先完成文件编码" : "输入你的问题，Enter 发送"
             }
@@ -333,7 +582,11 @@ export function KnowledgeChatPanel({ files }: KnowledgeChatPanelProps) {
           <Textarea
             value={retrieveQuery}
             onChange={(e) => setRetrieveQuery(e.target.value)}
-            onKeyDown={(e) => handleInputKeyDown(e, handleRetrieve)}
+            onKeyDown={(e) =>
+              handleInputKeyDown(e, handleRetrieve, retrieveComposingRef)
+            }
+            onCompositionStart={() => (retrieveComposingRef.current = true)}
+            onCompositionEnd={() => (retrieveComposingRef.current = false)}
             placeholder={
               noEmbedded ? "请先完成文件编码" : "输入检索关键词，Enter 检索"
             }

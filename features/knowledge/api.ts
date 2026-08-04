@@ -16,6 +16,9 @@ interface ApiResponse<T> {
   data: T
 }
 
+/** 知识库检索方式：向量检索 / 混合检索 */
+export type RetrievalMethod = "vector" | "hybrid"
+
 /** 检索/问答返回的知识片段 */
 export interface KnowledgeChunk {
   chunk_id: string
@@ -28,6 +31,9 @@ export interface KnowledgeChunk {
     [key: string]: unknown
   } | null
   score: number
+  semantic_score: number
+  keyword_score: number | null
+  retrieval_method: RetrievalMethod
 }
 
 /** 单个文件的编码结果 */
@@ -40,6 +46,21 @@ export interface EmbeddingResult {
 export interface ChatResult {
   answer: string
   chunks: KnowledgeChunk[]
+}
+
+/** 知识库检索请求参数 */
+export interface RagRetrieveRequest {
+  query: string
+  file_ids?: string[] | null
+  top_k?: number
+  retrieval_method?: RetrievalMethod
+  semantic_weight?: number
+  keyword_weight?: number
+}
+
+/** 知识库 RAG 问答请求参数 */
+export interface RagChatRequest extends RagRetrieveRequest {
+  temperature?: number
 }
 
 /**
@@ -92,15 +113,20 @@ export async function embedKnowledgeFiles(fileIds: string[]): Promise<ApiRespons
 
 /**
  * 检索知识库中最相似的片段（不调用大模型，仅返回召回片段）
- * @param query 用户问题或检索关键词
- * @param fileIds 限定检索的文件范围；不传（null）则检索全部已编码知识库
- * @param topK 返回最相似的 chunk 数量，默认 5
+ * @param request 检索请求；file_ids 不传（null）则检索全部已编码知识库
  */
 export async function retrieveKnowledge(
-  query: string,
-  fileIds?: string[] | null,
-  topK = 5
+  request: RagRetrieveRequest
 ): Promise<ApiResponse<KnowledgeChunk[]>> {
+  const {
+    query,
+    file_ids: fileIds,
+    top_k: topK = 5,
+    retrieval_method: retrievalMethod,
+    semantic_weight: semanticWeight,
+    keyword_weight: keywordWeight,
+  } = request
+
   return fetcher(
     `/knowledge/v1/retrieve`,
     {
@@ -112,6 +138,9 @@ export async function retrieveKnowledge(
         query,
         file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
         top_k: topK,
+        retrieval_method: retrievalMethod,
+        semantic_weight: semanticWeight,
+        keyword_weight: keywordWeight,
       }),
     }
   )
@@ -119,17 +148,21 @@ export async function retrieveKnowledge(
 
 /**
  * RAG 问答：先检索片段再交给大模型生成回答
- * @param query 用户问题
- * @param fileIds 限定检索的文件范围；不传（null）则检索全部已编码知识库
- * @param topK 提供给大模型的召回 chunk 数量，默认 5
- * @param temperature 生成随机性，越低越稳定，默认 0.2
+ * @param request 问答请求；file_ids 不传（null）则检索全部已编码知识库
  */
 export async function chatKnowledge(
-  query: string,
-  fileIds?: string[] | null,
-  topK = 5,
-  temperature = 0.2
+  request: RagChatRequest
 ): Promise<ApiResponse<ChatResult>> {
+  const {
+    query,
+    file_ids: fileIds,
+    top_k: topK = 5,
+    temperature = 0.2,
+    retrieval_method: retrievalMethod,
+    semantic_weight: semanticWeight,
+    keyword_weight: keywordWeight,
+  } = request
+
   return fetcher(
     `/knowledge/v1/chat`,
     {
@@ -142,6 +175,9 @@ export async function chatKnowledge(
         file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
         top_k: topK,
         temperature,
+        retrieval_method: retrievalMethod,
+        semantic_weight: semanticWeight,
+        keyword_weight: keywordWeight,
       }),
     }
   )
