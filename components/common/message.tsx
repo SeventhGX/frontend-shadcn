@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { memo, useMemo, useState } from "react"
 import { Bot, User, ChevronDown, ChevronRight, BrainCircuit } from "lucide-react"
-import ReactMarkdown from "react-markdown"
+import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import remarkBreaks from "remark-breaks"
 import { cn } from "@/lib/utils"
@@ -96,12 +96,86 @@ function triggerDownload(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export function Message({ message, isStreaming, onSubmitImage, onDeleteMessage }: MessageProps) {
+// 插件数组与组件表必须保持引用稳定，否则 ReactMarkdown 每次渲染都会重建整棵子树
+const REMARK_PLUGINS = [remarkGfm, remarkBreaks]
+
+const MARKDOWN_COMPONENTS: Components = {
+  p: ({ children }) => <p className="my-1 leading-relaxed">{children}</p>,
+  ul: ({ children }) => <ul className="list-disc pl-5 my-1 space-y-0.5">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal pl-5 my-1 space-y-0.5">{children}</ol>,
+  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+  h1: ({ children }) => <h1 className="text-lg font-semibold mt-2 mb-1">{children}</h1>,
+  h2: ({ children }) => <h2 className="text-base font-semibold mt-2 mb-1">{children}</h2>,
+  h3: ({ children }) => <h3 className="text-sm font-semibold mt-2 mb-1">{children}</h3>,
+  h4: ({ children }) => <h4 className="text-sm font-semibold mt-1.5 mb-1">{children}</h4>,
+  a: ({ children, href }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-primary underline underline-offset-2 hover:opacity-80"
+    >
+      {children}
+    </a>
+  ),
+  code: ({ className, children, ...props }) => {
+    const isInline = !className
+    if (isInline) {
+      return (
+        <code
+          className="px-1 py-0.5 rounded bg-background/60 text-[0.85em] font-mono"
+          {...props}
+        >
+          {children}
+        </code>
+      )
+    }
+    return (
+      <code className={cn("font-mono text-[0.85em]", className)} {...props}>
+        {children}
+      </code>
+    )
+  },
+  pre: ({ children }) => (
+    <pre className="my-2 p-3 rounded-md bg-background/60 overflow-x-auto text-xs">
+      {children}
+    </pre>
+  ),
+  blockquote: ({ children }) => (
+    <blockquote className="my-2 pl-3 border-l-2 border-border text-muted-foreground">
+      {children}
+    </blockquote>
+  ),
+  table: ({ children }) => (
+    <div className="my-2 overflow-x-auto">
+      <table className="w-full border-collapse text-xs">{children}</table>
+    </div>
+  ),
+  th: ({ children }) => (
+    <th className="border border-border px-2 py-1 bg-background/40 font-medium text-left">
+      {children}
+    </th>
+  ),
+  td: ({ children }) => <td className="border border-border px-2 py-1 align-top">{children}</td>,
+  br: () => <br />,
+  hr: () => <hr className="my-2 border-border" />,
+}
+
+// 按 content memo，避免流式输出时其他消息重复解析 markdown
+const MarkdownContent = memo(function MarkdownContent({ content }: { content: string }) {
+  const normalized = useMemo(() => normalizeMarkdownBreakTags(content), [content])
+  return (
+    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>
+      {normalized}
+    </ReactMarkdown>
+  )
+})
+
+function MessageBase({ message, isStreaming, onSubmitImage, onDeleteMessage }: MessageProps) {
   const isUser = message.role === "user"
   const [reasoningExpanded, setReasoningExpanded] = useState(false)
   // assistant 消息支持切换渲染/源码
   const [showRaw, setShowRaw] = useState(false)
-
   // 正在推理中：有 reasoning 但还没有 content
   const isReasoning = isStreaming && !!message.reasoning && !message.content
 
@@ -335,74 +409,7 @@ export function Message({ message, isStreaming, onSubmitImage, onDeleteMessage }
                 {showRaw ? (
                   <pre className="whitespace-pre-wrap text-xs bg-transparent p-0 m-0 min-h-[2em]">{message.content}</pre>
                 ) : (
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkBreaks]}
-                    components={{
-                      p: ({ children }) => <p className="my-1 leading-relaxed">{children}</p>,
-                      ul: ({ children }) => <ul className="list-disc pl-5 my-1 space-y-0.5">{children}</ul>,
-                      ol: ({ children }) => <ol className="list-decimal pl-5 my-1 space-y-0.5">{children}</ol>,
-                      li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-                      h1: ({ children }) => <h1 className="text-lg font-semibold mt-2 mb-1">{children}</h1>,
-                      h2: ({ children }) => <h2 className="text-base font-semibold mt-2 mb-1">{children}</h2>,
-                      h3: ({ children }) => <h3 className="text-sm font-semibold mt-2 mb-1">{children}</h3>,
-                      h4: ({ children }) => <h4 className="text-sm font-semibold mt-1.5 mb-1">{children}</h4>,
-                      a: ({ children, href }) => (
-                        <a
-                          href={href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary underline underline-offset-2 hover:opacity-80"
-                        >
-                          {children}
-                        </a>
-                      ),
-                      code: ({ className, children, ...props }) => {
-                        const isInline = !className
-                        if (isInline) {
-                          return (
-                            <code
-                              className="px-1 py-0.5 rounded bg-background/60 text-[0.85em] font-mono"
-                              {...props}
-                            >
-                              {children}
-                            </code>
-                          )
-                        }
-                        return (
-                          <code className={cn("font-mono text-[0.85em]", className)} {...props}>
-                            {children}
-                          </code>
-                        )
-                      },
-                      pre: ({ children }) => (
-                        <pre className="my-2 p-3 rounded-md bg-background/60 overflow-x-auto text-xs">
-                          {children}
-                        </pre>
-                      ),
-                      blockquote: ({ children }) => (
-                        <blockquote className="my-2 pl-3 border-l-2 border-border text-muted-foreground">
-                          {children}
-                        </blockquote>
-                      ),
-                      table: ({ children }) => (
-                        <div className="my-2 overflow-x-auto">
-                          <table className="w-full border-collapse text-xs">{children}</table>
-                        </div>
-                      ),
-                      th: ({ children }) => (
-                        <th className="border border-border px-2 py-1 bg-background/40 font-medium text-left">
-                          {children}
-                        </th>
-                      ),
-                      td: ({ children }) => {
-                        return <td className="border border-border px-2 py-1 align-top">{children}</td>
-                      },
-                      br: () => <br />,
-                      hr: () => <hr className="my-2 border-border" />,
-                    }}
-                  >
-                    {normalizeMarkdownBreakTags(message.content)}
-                  </ReactMarkdown>
+                  <MarkdownContent content={message.content} />
                 )}
               </div>
             )
@@ -421,3 +428,5 @@ export function Message({ message, isStreaming, onSubmitImage, onDeleteMessage }
     </div>
   )
 }
+
+export const Message = memo(MessageBase)

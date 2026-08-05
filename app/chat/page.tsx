@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import {
   Send,
   Bot,
@@ -51,6 +51,9 @@ import {
 } from "@/features/chat/api"
 
 const IMAGE_REF_PREFIX = "Image-:"
+
+// 流式输出的最小渲染间隔（毫秒）
+const STREAM_FLUSH_INTERVAL = 80
 
 // 从消息 content 中提取所有 Image-: 前缀的文件 ID
 function extractImageIds(content: string): string[] {
@@ -324,7 +327,7 @@ export default function ChatPage() {
     }
   }
 
-  const handleDeleteMessage = async (messageId: string) => {
+  const handleDeleteMessage = useCallback(async (messageId: string) => {
     if (isStreaming) return
     const currentMessages = messagesRef.current
     const deleteIndex = currentMessages.findIndex((message) => message.id === messageId)
@@ -349,7 +352,35 @@ export default function ChatPage() {
     } catch (error) {
       console.error("删除消息后更新会话失败:", error)
     }
-  }
+  }, [isStreaming, currentSessionId, currentSessionName])
+
+  const handleSubmitImage = useCallback(async (img: ChatImageItem, name: string) => {
+    try {
+      let base64 = img.data
+      let mimeType = img.mimeType ?? "image/png"
+      if (img.type === "url") {
+        const r = await fetch(img.data ?? "")
+        mimeType = r.headers.get("content-type") || mimeType
+        const blob = await r.blob()
+        base64 = await blobToBase64(blob)
+      } else if (!base64 && img.id) {
+        // 历史会话中只持有压缩 JPEG 预览，提交到附件栏需走 getFile 取回原图
+        // 必须等原图加载完成后再添加，否则后续 editImage 会拿不到原始数据
+        const res = await getFile(img.id)
+        base64 = res.data.data
+        mimeType = res.data.file_type || mimeType
+      }
+      if (!base64) throw new Error("原始图像数据为空")
+      imageAttachmentsRef.current?.addImage({
+        name,
+        base64,
+        mimeType,
+        sourceId: img.id,
+      })
+    } catch (err) {
+      console.error("提交图像到附件失败:", err)
+    }
+  }, [])
 
   const handleSend = async () => {
     const userContent = input.trim()
@@ -413,6 +444,9 @@ export default function ChatPage() {
     let pendingImages: ChatImageItem[] | null = null
     // 本次生成图像在后端保存后返回的文件 ID
     const savedImageIds: string[] = []
+    // 流式累积的文本；最后一次 setState 可能还没同步到 messagesRef，保存会话时以此为准
+    let streamedContent = ""
+    let streamedReasoning = ""
 
     try {
       if (isImageModel) {
@@ -547,6 +581,27 @@ export default function ChatPage() {
         if (!reader) throw new Error("无法获取流读取器")
 
         let buffer = ""
+        // 按批次合并渲染：逐 token setState 会让长 markdown 反复重排，造成明显卡顿
+        let pendingDirty = false
+        let lastFlushAt = 0
+        const flushStream = () => {
+          pendingDirty = false
+          lastFlushAt = Date.now()
+          const content = streamedContent
+          const reasoning = streamedReasoning
+          setMessages((prev) => {
+            const updated = [...prev]
+            const last = updated[updated.length - 1]
+            if (last && last.role === "assistant") {
+              updated[updated.length - 1] = {
+                ...last,
+                content,
+                reasoning: reasoning || undefined,
+              }
+            }
+            return updated
+          })
+        }
 
         while (true) {
           const { done, value } = await reader.read()
@@ -572,35 +627,23 @@ export default function ChatPage() {
               const data = JSON.parse(jsonStr)
 
               if (data.content !== undefined) {
-                setMessages((prev) => {
-                  const updated = [...prev]
-                  const last = updated[updated.length - 1]
-                  if (last && last.role === "assistant") {
-                    updated[updated.length - 1] = {
-                      ...last,
-                      content: last.content + data.content,
-                    }
-                  }
-                  return updated
-                })
+                streamedContent += data.content
+                pendingDirty = true
               } else if (data.reasoning_content !== undefined) {
-                setMessages((prev) => {
-                  const updated = [...prev]
-                  const last = updated[updated.length - 1]
-                  if (last && last.role === "assistant") {
-                    updated[updated.length - 1] = {
-                      ...last,
-                      reasoning: (last.reasoning ?? "") + data.reasoning_content,
-                    }
-                  }
-                  return updated
-                })
+                streamedReasoning += data.reasoning_content
+                pendingDirty = true
               }
             } catch (e) {
               console.warn("JSON 解析错误:", trimmedLine, e)
             }
           }
+
+          if (pendingDirty && Date.now() - lastFlushAt >= STREAM_FLUSH_INTERVAL) {
+            flushStream()
+          }
         }
+
+        if (pendingDirty) flushStream()
       }
     } catch (error) {
       console.error("Chat error:", error)
@@ -628,6 +671,9 @@ export default function ChatPage() {
           // 本次生成的图像可能尚未通过 setState 同步到 ref，这里手动覆盖到最后一条 assistant 消息
           if (isLastAssistant && pendingImages && pendingImages.length > 0) {
             return chatMessageToRequestMessage(m, pendingImages, savedImageIds)
+          }
+          if (isLastAssistant && streamedContent) {
+            return chatMessageToRequestMessage({ ...m, content: streamedContent })
           }
           return chatMessageToRequestMessage(m)
         }
@@ -841,33 +887,7 @@ export default function ChatPage() {
                         msg.role === "assistant"
                       }
                       onDeleteMessage={!isStreaming ? handleDeleteMessage : undefined}
-                      onSubmitImage={async (img, name) => {
-                        try {
-                          let base64 = img.data
-                          let mimeType = img.mimeType ?? "image/png"
-                          if (img.type === "url") {
-                            const r = await fetch(img.data ?? "")
-                            mimeType = r.headers.get("content-type") || mimeType
-                            const blob = await r.blob()
-                            base64 = await blobToBase64(blob)
-                          } else if (!base64 && img.id) {
-                            // 历史会话中只持有压缩 JPEG 预览，提交到附件栏需走 getFile 取回原图
-                            // 必须等原图加载完成后再添加，否则后续 editImage 会拿不到原始数据
-                            const res = await getFile(img.id)
-                            base64 = res.data.data
-                            mimeType = res.data.file_type || mimeType
-                          }
-                          if (!base64) throw new Error("原始图像数据为空")
-                          imageAttachmentsRef.current?.addImage({
-                            name,
-                            base64,
-                            mimeType,
-                            sourceId: img.id,
-                          })
-                        } catch (err) {
-                          console.error("提交图像到附件失败:", err)
-                        }
-                      }}
+                      onSubmitImage={handleSubmitImage}
                     />
                     {/* 历史会话末尾的分隔线，区分历史与后续新内容 */}
                     {historyCount > 0 && index === historyCount - 1 && (
