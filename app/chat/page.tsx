@@ -123,7 +123,9 @@ export default function ChatPage() {
   const [currentSessionName, setCurrentSessionName] = useState<string>("")
   // 从历史加载的消息数量，用于在其后渲染分隔线，区分历史会话与新内容
   const [historyCount, setHistoryCount] = useState(0)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
+  // 是否跟随最新消息滚动；用户向上滚动后置为 false，回到底部再恢复
+  const autoScrollRef = useRef(true)
   const isComposingRef = useRef(false) // 记录输入法候选状态
   // 保存最新的 messages，供流式结束后同步会话使用（避免在 setState updater 中执行副作用）
   const messagesRef = useRef<ChatMessage[]>([])
@@ -199,10 +201,24 @@ export default function ChatPage() {
     return acc
   }, {})
 
+  // 距底部小于该值时视为"在底部"，继续跟随滚动
+  const BOTTOM_THRESHOLD = 40
+
+  const handleMessagesScroll = () => {
+    const el = messagesContainerRef.current
+    if (!el) return
+    autoScrollRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_THRESHOLD
+  }
+
   // 每次消息更新后自动滚动到底部，同时同步 ref
   useEffect(() => {
     messagesRef.current = messages
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    if (!autoScrollRef.current) return
+    const el = messagesContainerRef.current
+    if (!el) return
+    // 用瞬时滚动而非 smooth：平滑滚动的中间位置会被 scroll 事件误判为"用户上滚"
+    el.scrollTop = el.scrollHeight
   }, [messages])
 
   const loadSessions = async () => {
@@ -246,6 +262,7 @@ export default function ChatPage() {
       })
       const loaded: ChatMessage[] = parsed.map((p: { msg: ChatMessage }) => p.msg)
       setMessages(loaded)
+      autoScrollRef.current = true
       setHistoryCount(loaded.length)
       // 同步当前会话 id 与标题
       setCurrentSessionId(session.id)
@@ -388,6 +405,7 @@ export default function ChatPage() {
       userMessage,
       assistantMessage,
     ])
+    autoScrollRef.current = true
     setInput("")
     setIsStreaming(true)
 
@@ -666,6 +684,7 @@ export default function ChatPage() {
   const clearMessages = () => {
     if (isStreaming) return
     setMessages([])
+    autoScrollRef.current = true
     // 清空对话视为开启新会话
     setCurrentSessionId(null)
     setCurrentSessionName("")
@@ -798,7 +817,11 @@ export default function ChatPage() {
           />
 
           {/* 消息列表区域 */}
-          <div className="flex-1 min-w-0 min-h-0 overflow-y-auto space-y-4 py-2 px-1">
+          <div
+            ref={messagesContainerRef}
+            onScroll={handleMessagesScroll}
+            className="flex-1 min-w-0 min-h-0 overflow-y-auto space-y-4 py-2 px-1"
+          >
             {messages.length === 0 ? (
               <div className="h-full flex items-center justify-center">
                 <p className="text-sm text-muted-foreground">
@@ -856,8 +879,6 @@ export default function ChatPage() {
                     )}
                   </div>
                 ))}
-                {/* 用于自动滚动到底部的锚点 */}
-                <div ref={messagesEndRef} />
               </>
             )}
           </div>
