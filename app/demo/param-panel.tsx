@@ -16,11 +16,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import type { LstmParamNode } from "@/features/demo/api"
+import type { DemoParamNode } from "@/features/demo/api"
 
 interface ParamPanelProps {
   /** 参数树（分组 + 叶子节点） */
-  nodes: LstmParamNode[]
+  nodes: DemoParamNode[]
   /** 以点分路径为 key 的当前取值表，如 "synthesis.n_samples" */
   values: Record<string, string>
   /** 叶子节点变更回调 */
@@ -51,7 +51,7 @@ export function ParamPanel({ nodes, values, onChange, disabled }: ParamPanelProp
 }
 
 interface ParamNodeProps {
-  node: LstmParamNode
+  node: DemoParamNode
   path: string
   values: Record<string, string>
   onChange: (path: string, value: string) => void
@@ -93,7 +93,7 @@ function ParamNode({ node, path, values, onChange, disabled }: ParamNodeProps) {
 }
 
 interface ParamFieldProps {
-  node: LstmParamNode
+  node: DemoParamNode
   path: string
   value: string
   onChange: (path: string, value: string) => void
@@ -102,11 +102,11 @@ interface ParamFieldProps {
 
 function ParamField({ node, path, value, onChange, disabled }: ParamFieldProps) {
   const rangeHint =
-    node.minimum !== null && node.maximum !== null
+    node.minimum != null && node.maximum != null
       ? `范围 ${node.minimum} ~ ${node.maximum}`
-      : node.minimum !== null
+      : node.minimum != null
         ? `≥ ${node.minimum}`
-        : node.maximum !== null
+        : node.maximum != null
           ? `≤ ${node.maximum}`
           : ""
 

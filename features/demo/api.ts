@@ -13,16 +13,16 @@ export interface DemoItem {
   type: string
 }
 
-/** 参数节点：可为分组或具体的输入项 */
-export interface LstmParamNode {
+/** 参数节点：可为分组或具体的输入项。不同 Demo 返回的可选字段不一定齐全 */
+export interface DemoParamNode {
   name: string
   desc: string
   type: 'group' | 'integer' | 'number' | 'select'
-  value: number | string | boolean | null
-  minimum: number | null
-  maximum: number | null
-  options: string[] | null
-  sub_nodes: LstmParamNode[] | null
+  value?: number | string | boolean | null
+  minimum?: number | null
+  maximum?: number | null
+  options?: string[] | null
+  sub_nodes?: DemoParamNode[] | null
 }
 
 /** 训练结果指标 */
@@ -48,6 +48,34 @@ export interface LstmTrainResult {
   result_id: string
   created_at: string
   metrics: LstmMetrics
+  links: LstmResultLinks
+}
+
+/** Isolation Forest 检测指标 */
+export interface IsolationForestMetrics {
+  precision: number
+  recall: number
+  f1_score: number
+  accuracy: number
+  detected_anomalies: number
+  actual_anomalies: number
+  detection_seconds: number
+  device: string
+}
+
+/** Isolation Forest 检测结果 */
+export interface IsolationForestDetectResult {
+  result_id: string
+  created_at: string
+  metrics: IsolationForestMetrics
+  links: LstmResultLinks
+}
+
+/** 各 Demo 运行结果的公共结构，页面统一以此承载结果状态 */
+export interface DemoRunResult {
+  result_id: string
+  created_at: string
+  metrics: LstmMetrics | IsolationForestMetrics
   links: LstmResultLinks
 }
 
@@ -77,8 +105,36 @@ export async function getDemoList(): Promise<ApiResponse<DemoItem[]>> {
 /**
  * 获取 LSTM 可配置参数（分组树结构）
  */
-export async function getLstmParamList(): Promise<ApiResponse<LstmParamNode[]>> {
+export async function getLstmParamList(): Promise<ApiResponse<DemoParamNode[]>> {
   return fetcher(`/demo/lstm/param-list`, { method: 'GET' })
+}
+
+/**
+ * 获取 Isolation Forest 可配置参数（分组树结构）
+ */
+export async function getIsolationForestParamList(): Promise<
+  ApiResponse<DemoParamNode[]>
+> {
+  return fetcher(`/demo/isolation-forest/param-list`, { method: 'GET' })
+}
+
+/**
+ * 运行 Isolation Forest 异常检测。检测在服务端 CPU 同步完成，无流式进度。
+ * @param body 与参数树结构一致的嵌套请求体，缺省字段后端会使用默认值
+ * @returns 检测结果（指标与结果文件链接）
+ */
+export async function detectIsolationForest(
+  body: Record<string, unknown>
+): Promise<IsolationForestDetectResult> {
+  const res: ApiResponse<IsolationForestDetectResult> = await fetcher(
+    `/demo/isolation-forest/detect`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  )
+  return res.data
 }
 
 /**

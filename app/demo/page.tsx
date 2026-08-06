@@ -20,22 +20,30 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
 import {
+  detectIsolationForest,
   downloadResultFile,
   fetchResultImageObjectUrl,
   getDemoList,
+  getIsolationForestParamList,
   getLstmParamList,
   trainLstm,
   type DemoItem,
+  type DemoParamNode,
+  type DemoRunResult,
   type LstmEpochProgress,
-  type LstmParamNode,
-  type LstmTrainResult,
 } from "@/features/demo/api"
 import { ParamPanel } from "./param-panel"
 import { ResultPanel } from "./result-panel"
 
+/** 已完成前端对接的 Demo 及其参数接口 */
+const PARAM_LOADERS: Record<string, () => Promise<{ data: DemoParamNode[] }>> = {
+  lstm: getLstmParamList,
+  "isolation-forest": getIsolationForestParamList,
+}
+
 /** 递归遍历参数树，用默认值构建以点分路径为 key 的取值表 */
 function buildDefaultValues(
-  nodes: LstmParamNode[],
+  nodes: DemoParamNode[],
   prefix = ""
 ): Record<string, string> {
   const values: Record<string, string> = {}
@@ -44,7 +52,7 @@ function buildDefaultValues(
     if (node.type === "group") {
       Object.assign(values, buildDefaultValues(node.sub_nodes ?? [], path))
     } else {
-      values[path] = node.value === null ? "" : String(node.value)
+      values[path] = node.value == null ? "" : String(node.value)
     }
   }
   return values
@@ -52,7 +60,7 @@ function buildDefaultValues(
 
 /** 递归遍历参数树，结合取值表构建与结构一致的嵌套请求体 */
 function buildRequestBody(
-  nodes: LstmParamNode[],
+  nodes: DemoParamNode[],
   values: Record<string, string>,
   prefix = ""
 ): Record<string, unknown> {
@@ -76,18 +84,48 @@ function buildRequestBody(
   return body
 }
 
+/**
+ * Isolation Forest 的严格正数与跨字段约束。
+ * 参数元数据中浮点字段的 minimum 为 0，但后端校验为严格大于 0，故在此补齐。
+ * @returns 首个错误提示，全部通过时返回空串
+ */
+function validateIsolationForest(body: Record<string, unknown>): string {
+  const synthesis = (body.synthesis ?? {}) as Record<string, number>
+  const model = (body.model ?? {}) as Record<string, number>
+
+  const positiveFields: [number, string][] = [
+    [synthesis.cluster_std, "正常样本簇标准差"],
+    [synthesis.anomaly_radius_min, "异常点最小分布半径"],
+    [synthesis.anomaly_radius_max, "异常点最大分布半径"],
+  ]
+  for (const [value, label] of positiveFields) {
+    if (!(value > 0)) return `${label}必须大于 0`
+  }
+
+  if (!(synthesis.anomaly_samples < synthesis.normal_samples)) {
+    return "异常样本数量必须小于正常样本数量"
+  }
+  if (!(synthesis.anomaly_radius_max > synthesis.anomaly_radius_min)) {
+    return "异常点最大分布半径必须大于最小分布半径"
+  }
+  if (model.max_samples > synthesis.normal_samples + synthesis.anomaly_samples) {
+    return "每棵孤立树的采样数量不能大于样本总数"
+  }
+  return ""
+}
+
 export default function DemoPage() {
   const [demoList, setDemoList] = React.useState<DemoItem[]>([])
   const [selectedDemo, setSelectedDemo] = React.useState<string>("")
 
-  const [paramNodes, setParamNodes] = React.useState<LstmParamNode[]>([])
+  const [paramNodes, setParamNodes] = React.useState<DemoParamNode[]>([])
   const [values, setValues] = React.useState<Record<string, string>>({})
   const [loadingParams, setLoadingParams] = React.useState(false)
 
-  const [training, setTraining] = React.useState(false)
-  const [result, setResult] = React.useState<LstmTrainResult | null>(null)
+  const [running, setRunning] = React.useState(false)
+  const [result, setResult] = React.useState<DemoRunResult | null>(null)
 
-  // 训练过程中的进度：最近一轮 epoch 事件与是否进入预测阶段
+  // LSTM 训练过程中的进度：最近一轮 epoch 事件与是否进入预测阶段
   const [progress, setProgress] = React.useState<LstmEpochProgress | null>(null)
   const [predicting, setPredicting] = React.useState(false)
 
@@ -105,17 +143,18 @@ export default function DemoPage() {
       })
   }, [])
 
-  // 选中 Demo 后加载对应参数清单（目前仅 lstm）
+  // 选中 Demo 后加载对应参数清单
   const handleSelectDemo = React.useCallback(async (name: string) => {
     setSelectedDemo(name)
     setResult(null)
     setParamNodes([])
     setValues({})
-    if (name !== "lstm") return
+    const loadParams = PARAM_LOADERS[name]
+    if (!loadParams) return
 
     try {
       setLoadingParams(true)
-      const res = await getLstmParamList()
+      const res = await loadParams()
       const nodes = res?.data ?? []
       setParamNodes(nodes)
       setValues(buildDefaultValues(nodes))
@@ -130,6 +169,8 @@ export default function DemoPage() {
   const handleValueChange = React.useCallback((path: string, value: string) => {
     setValues((prev) => ({ ...prev, [path]: value }))
   }, [])
+
+  const runLabel = selectedDemo === "isolation-forest" ? "检测" : "训练"
 
   // 训练成功后按结果链接鉴权拉取图片并转 ObjectURL
   React.useEffect(() => {
@@ -167,28 +208,43 @@ export default function DemoPage() {
     }
   }, [result])
 
-  const handleTrain = async () => {
+  const handleRun = async () => {
     if (paramNodes.length === 0) return
+    const body = buildRequestBody(paramNodes, values)
+
+    if (selectedDemo === "isolation-forest") {
+      const invalid = validateIsolationForest(body)
+      if (invalid) {
+        toast.error(invalid)
+        return
+      }
+    }
+
     try {
-      setTraining(true)
+      setRunning(true)
       setResult(null)
       setProgress(null)
       setPredicting(false)
-      const body = buildRequestBody(paramNodes, values)
-      const data = await trainLstm(body, {
-        onEpoch: (p) => {
-          setProgress(p)
-          setPredicting(false)
-        },
-        onPredicting: () => setPredicting(true),
-      })
-      setResult(data)
-      toast.success("训练完成")
+
+      if (selectedDemo === "isolation-forest") {
+        setResult(await detectIsolationForest(body))
+        toast.success("检测完成")
+      } else {
+        const data = await trainLstm(body, {
+          onEpoch: (p) => {
+            setProgress(p)
+            setPredicting(false)
+          },
+          onPredicting: () => setPredicting(true),
+        })
+        setResult(data)
+        toast.success("训练完成")
+      }
     } catch (error) {
       console.error(error)
-      toast.error(error instanceof Error ? error.message : "训练失败，请检查参数后重试")
+      toast.error(error instanceof Error ? error.message : "运行失败，请检查参数后重试")
     } finally {
-      setTraining(false)
+      setRunning(false)
       setPredicting(false)
     }
   }
@@ -196,7 +252,7 @@ export default function DemoPage() {
   const handleDownloadCsv = async () => {
     if (!result) return
     try {
-      await downloadResultFile(result.links.csv, `lstm-${result.result_id}.csv`)
+      await downloadResultFile(result.links.csv, `${selectedDemo}-${result.result_id}.csv`)
     } catch (error) {
       console.error(error)
       toast.error("下载 CSV 失败")
@@ -206,7 +262,7 @@ export default function DemoPage() {
   const handleDownloadExcel = async () => {
     if (!result) return
     try {
-      await downloadResultFile(result.links.excel, `lstm-${result.result_id}.xlsx`)
+      await downloadResultFile(result.links.excel, `${selectedDemo}-${result.result_id}.xlsx`)
     } catch (error) {
       console.error(error)
       toast.error("下载 Excel 失败")
@@ -217,7 +273,7 @@ export default function DemoPage() {
     if (!imageUrl || !result) return
     const anchor = document.createElement("a")
     anchor.href = imageUrl
-    anchor.download = `lstm-${result.result_id}.png`
+    anchor.download = `${selectedDemo}-${result.result_id}.png`
     document.body.appendChild(anchor)
     anchor.click()
     document.body.removeChild(anchor)
@@ -259,7 +315,7 @@ export default function DemoPage() {
                     nodes={paramNodes}
                     values={values}
                     onChange={handleValueChange}
-                    disabled={training}
+                    disabled={running}
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground">
@@ -270,18 +326,18 @@ export default function DemoPage() {
 
               <Button
                 className="w-full"
-                onClick={handleTrain}
-                disabled={training || paramNodes.length === 0}
+                onClick={handleRun}
+                disabled={running || paramNodes.length === 0}
               >
-                {training ? (
+                {running ? (
                   <>
                     <Loader2 className="size-4 animate-spin" />
-                    训练中…
+                    {runLabel}中…
                   </>
                 ) : (
                   <>
                     <Play className="size-4" />
-                    开始训练
+                    开始{runLabel}
                   </>
                 )}
               </Button>
@@ -294,11 +350,12 @@ export default function DemoPage() {
           <ResizablePanel defaultSize={75} minSize={40}>
             <div className="h-full p-4">
               <ResultPanel
+                demo={selectedDemo}
                 result={result}
                 imageUrl={imageUrl}
                 imageLoading={imageLoading}
                 imageError={imageError}
-                training={training}
+                running={running}
                 progress={progress}
                 predicting={predicting}
                 onDownloadCsv={handleDownloadCsv}
