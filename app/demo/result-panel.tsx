@@ -36,6 +36,12 @@ interface MetricField {
 
 const formatPercent = (value: number | string) => `${(Number(value) * 100).toFixed(2)}%`
 
+// 轮廓系数与兰德指数可为负值，保留符号便于判读
+const formatSigned = (value: number | string) => {
+  const num = Number(value)
+  return `${num > 0 ? "+" : ""}${num.toFixed(4)}`
+}
+
 /** 各 Demo 的指标字段中文标签与格式化方式 */
 const METRIC_FIELDS: Record<string, MetricField[]> = {
   lstm: [
@@ -55,6 +61,19 @@ const METRIC_FIELDS: Record<string, MetricField[]> = {
     { key: "detected_anomalies", label: "检测异常数", format: (v) => String(v) },
     { key: "actual_anomalies", label: "实际异常数", format: (v) => String(v) },
     { key: "detection_seconds", label: "检测耗时", format: (v) => `${Number(v).toFixed(2)} s` },
+    { key: "device", label: "计算设备", format: (v) => String(v).toUpperCase() },
+  ],
+  kmeans: [
+    { key: "inertia", label: "簇内平方和", format: (v) => Number(v).toFixed(2) },
+    { key: "silhouette", label: "轮廓系数", format: formatSigned },
+    { key: "davies_bouldin", label: "戴维森堡丁指数", format: (v) => Number(v).toFixed(4) },
+    { key: "calinski_harabasz", label: "方差比准则", format: (v) => Number(v).toFixed(2) },
+    { key: "adjusted_rand_index", label: "调整兰德指数", format: formatSigned },
+    { key: "iterations", label: "迭代次数", format: (v) => String(v) },
+    { key: "actual_k", label: "实际簇数", format: (v) => String(v) },
+    { key: "suggested_k", label: "推荐簇数", format: (v) => String(v) },
+    { key: "sample_count", label: "样本总数", format: (v) => String(v) },
+    { key: "cluster_seconds", label: "拟合耗时", format: (v) => `${Number(v).toFixed(2)} s` },
     { key: "device", label: "计算设备", format: (v) => String(v).toUpperCase() },
   ],
 }
@@ -95,6 +114,12 @@ export function ResultPanel({
   const metricFields = METRIC_FIELDS[demo] ?? []
   const metrics: Record<string, number | string> = { ...result.metrics }
 
+  // 推荐簇数与实际簇数不一致时提醒用户调整 K，是本 Demo 的核心交互点
+  const kmeansHint =
+    demo === "kmeans" && metrics.suggested_k !== metrics.actual_k
+      ? `肘部法则推荐簇数为 ${metrics.suggested_k}，当前聚类簇数为 ${metrics.actual_k}，可尝试调整后重新聚类。`
+      : ""
+
   return (
     <div className="flex h-full flex-col gap-4 overflow-auto">
       {/* 指标卡片 */}
@@ -111,6 +136,12 @@ export function ResultPanel({
           ))}
         </div>
       </div>
+
+      {kmeansHint && (
+        <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+          {kmeansHint}
+        </p>
+      )}
 
       {/* 下载操作 */}
       <div className="flex flex-wrap gap-2">

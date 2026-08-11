@@ -20,11 +20,13 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
 import {
+  clusterKmeans,
   detectIsolationForest,
   downloadResultFile,
   fetchResultImageObjectUrl,
   getDemoList,
   getIsolationForestParamList,
+  getKmeansParamList,
   getLstmParamList,
   trainLstm,
   type DemoItem,
@@ -39,6 +41,14 @@ import { ResultPanel } from "./result-panel"
 const PARAM_LOADERS: Record<string, () => Promise<{ data: DemoParamNode[] }>> = {
   lstm: getLstmParamList,
   "isolation-forest": getIsolationForestParamList,
+  kmeans: getKmeansParamList,
+}
+
+/** 各 Demo 的运行按钮文案 */
+const RUN_LABELS: Record<string, string> = {
+  lstm: "训练",
+  "isolation-forest": "检测",
+  kmeans: "聚类",
 }
 
 /** 递归遍历参数树，用默认值构建以点分路径为 key 的取值表 */
@@ -73,7 +83,7 @@ function buildRequestBody(
     }
 
     const raw = values[path]
-    if (node.type === "select") {
+    if (node.type === "select" || node.type === "enum") {
       body[node.name] = raw
     } else {
       const parsed = node.type === "integer" ? parseInt(raw, 10) : parseFloat(raw)
@@ -110,6 +120,31 @@ function validateIsolationForest(body: Record<string, unknown>): string {
   }
   if (model.max_samples > synthesis.normal_samples + synthesis.anomaly_samples) {
     return "每棵孤立树的采样数量不能大于样本总数"
+  }
+  return ""
+}
+
+/**
+ * K-Means 的严格正数与跨字段约束。
+ * 参数元数据中浮点字段的 minimum 为 0，但后端校验为严格大于 0，故在此补齐。
+ * @returns 首个错误提示，全部通过时返回空串
+ */
+function validateKmeans(body: Record<string, unknown>): string {
+  const synthesis = (body.synthesis ?? {}) as Record<string, number>
+  const model = (body.model ?? {}) as Record<string, number>
+  const evaluation = (body.evaluation ?? {}) as Record<string, number>
+
+  const positiveFields: [number, string][] = [
+    [synthesis.cluster_std, "簇内样本标准差"],
+    [synthesis.center_spread, "簇中心分布半径"],
+    [model.tol, "收敛阈值"],
+  ]
+  for (const [value, label] of positiveFields) {
+    if (!(value > 0)) return `${label}必须大于 0`
+  }
+
+  if (evaluation.elbow_max_k < model.n_clusters) {
+    return "肘部法则最大簇数不能小于模型聚类簇数"
   }
   return ""
 }
@@ -170,7 +205,7 @@ export default function DemoPage() {
     setValues((prev) => ({ ...prev, [path]: value }))
   }, [])
 
-  const runLabel = selectedDemo === "isolation-forest" ? "检测" : "训练"
+  const runLabel = RUN_LABELS[selectedDemo] ?? "运行"
 
   // 训练成功后按结果链接鉴权拉取图片并转 ObjectURL
   React.useEffect(() => {
@@ -220,6 +255,14 @@ export default function DemoPage() {
       }
     }
 
+    if (selectedDemo === "kmeans") {
+      const invalid = validateKmeans(body)
+      if (invalid) {
+        toast.error(invalid)
+        return
+      }
+    }
+
     try {
       setRunning(true)
       setResult(null)
@@ -229,6 +272,9 @@ export default function DemoPage() {
       if (selectedDemo === "isolation-forest") {
         setResult(await detectIsolationForest(body))
         toast.success("检测完成")
+      } else if (selectedDemo === "kmeans") {
+        setResult(await clusterKmeans(body))
+        toast.success("聚类完成")
       } else {
         const data = await trainLstm(body, {
           onEpoch: (p) => {

@@ -17,7 +17,8 @@ export interface DemoItem {
 export interface DemoParamNode {
   name: string
   desc: string
-  type: 'group' | 'integer' | 'number' | 'select'
+  // 枚举型在不同 Demo 中分别返回 select 与 enum，两者语义一致
+  type: 'group' | 'integer' | 'number' | 'select' | 'enum'
   value?: number | string | boolean | null
   minimum?: number | null
   maximum?: number | null
@@ -71,11 +72,34 @@ export interface IsolationForestDetectResult {
   links: LstmResultLinks
 }
 
+/** K-Means 聚类指标 */
+export interface KMeansMetrics {
+  inertia: number
+  silhouette: number
+  davies_bouldin: number
+  calinski_harabasz: number
+  adjusted_rand_index: number
+  iterations: number
+  actual_k: number
+  suggested_k: number
+  sample_count: number
+  cluster_seconds: number
+  device: string
+}
+
+/** K-Means 聚类结果 */
+export interface KMeansClusterResult {
+  result_id: string
+  created_at: string
+  metrics: KMeansMetrics
+  links: LstmResultLinks
+}
+
 /** 各 Demo 运行结果的公共结构，页面统一以此承载结果状态 */
 export interface DemoRunResult {
   result_id: string
   created_at: string
-  metrics: LstmMetrics | IsolationForestMetrics
+  metrics: LstmMetrics | IsolationForestMetrics | KMeansMetrics
   links: LstmResultLinks
 }
 
@@ -119,6 +143,15 @@ export async function getIsolationForestParamList(): Promise<
 }
 
 /**
+ * 获取 K-Means 可配置参数（分组树结构）
+ */
+export async function getKmeansParamList(): Promise<
+  ApiResponse<DemoParamNode[]>
+> {
+  return fetcher(`/demo/kmeans/param-list`, { method: 'GET' })
+}
+
+/**
  * 运行 Isolation Forest 异常检测。检测在服务端 CPU 同步完成，无流式进度。
  * @param body 与参数树结构一致的嵌套请求体，缺省字段后端会使用默认值
  * @returns 检测结果（指标与结果文件链接）
@@ -128,6 +161,26 @@ export async function detectIsolationForest(
 ): Promise<IsolationForestDetectResult> {
   const res: ApiResponse<IsolationForestDetectResult> = await fetcher(
     `/demo/isolation-forest/detect`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  )
+  return res.data
+}
+
+/**
+ * 运行 K-Means 聚类。聚类在服务端 CPU 同步完成，无流式进度；
+ * 除主模型外后端还会为肘部法则额外训练多个模型，耗时明显高于单次拟合。
+ * @param body 与参数树结构一致的嵌套请求体，缺省字段后端会使用默认值
+ * @returns 聚类结果（指标与结果文件链接）
+ */
+export async function clusterKmeans(
+  body: Record<string, unknown>
+): Promise<KMeansClusterResult> {
+  const res: ApiResponse<KMeansClusterResult> = await fetcher(
+    `/demo/kmeans/cluster`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

@@ -132,7 +132,7 @@ function ParamField({ node, path, value, onChange, disabled }: ParamFieldProps) 
         )}
       </div>
 
-      {node.type === "select" ? (
+      {node.type === "select" || node.type === "enum" ? (
         <Select
           value={value}
           onValueChange={(next) => onChange(path, next)}
