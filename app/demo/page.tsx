@@ -34,8 +34,12 @@ import {
   type DemoRunResult,
   type LstmEpochProgress,
 } from "@/features/demo/api"
+import { AstarView } from "./astar-view"
 import { ParamPanel } from "./param-panel"
 import { ResultPanel } from "./result-panel"
+
+/** A* 由前端画板提供输入，不走通用参数树流程 */
+const ASTAR = "astar"
 
 /** 已完成前端对接的 Demo 及其参数接口 */
 const PARAM_LOADERS: Record<string, () => Promise<{ data: DemoParamNode[] }>> = {
@@ -325,6 +329,38 @@ export default function DemoPage() {
     document.body.removeChild(anchor)
   }
 
+  const demoHeader = (
+    <>
+      <h1 className="text-xl font-bold">机器学习演示</h1>
+
+      <div className="flex flex-col gap-2">
+        <Label>演示项目</Label>
+        <Select value={selectedDemo} onValueChange={handleSelectDemo}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="请选择演示项目" />
+          </SelectTrigger>
+          <SelectContent>
+            {demoList.map((demo) => (
+              <SelectItem key={demo.name} value={demo.name}>
+                {demo.desc || demo.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </>
+  )
+
+  if (selectedDemo === ASTAR) {
+    return (
+      <AuthGuard>
+        <div className="h-full p-4">
+          <AstarView header={demoHeader} />
+        </div>
+      </AuthGuard>
+    )
+  }
+
   return (
     <AuthGuard>
       <div className="h-full p-4">
@@ -332,23 +368,7 @@ export default function DemoPage() {
           {/* 左侧：参数设定区（1/4 宽度） */}
           <ResizablePanel defaultSize={25} minSize={20}>
             <div className="flex h-full flex-col gap-3 p-4">
-              <h1 className="text-xl font-bold">机器学习演示</h1>
-
-              <div className="flex flex-col gap-2">
-                <Label>演示项目</Label>
-                <Select value={selectedDemo} onValueChange={handleSelectDemo}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="请选择演示项目" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {demoList.map((demo) => (
-                      <SelectItem key={demo.name} value={demo.name}>
-                        {demo.desc || demo.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {demoHeader}
 
               {/* 参数表单区 */}
               <div className="min-h-0 flex-1 overflow-auto">
