@@ -95,6 +95,91 @@ export interface KMeansClusterResult {
   links: LstmResultLinks
 }
 
+/** A* 提交的图节点，x / y 为画板坐标，后端据此计算欧氏启发值 */
+export interface AstarNodeInput {
+  id: string
+  label?: string | null
+  x: number
+  y: number
+}
+
+/** A* 提交的图的边，weight 省略时后端按两端欧氏距离计算 */
+export interface AstarEdgeInput {
+  id?: string | null
+  source: string
+  target: string
+  weight?: number | null
+}
+
+/** A* 求解请求体 */
+export interface AstarSolveRequest {
+  nodes: AstarNodeInput[]
+  edges: AstarEdgeInput[]
+  start_id: string
+  goal_id: string
+  directed?: boolean
+  start_to_goal_distance?: number | null
+}
+
+/** 某一步开放集合中的节点及其代价 */
+export interface AstarOpenEntry {
+  node_id: string
+  g: number
+  h: number
+  f: number
+  parent_id: string | null
+}
+
+/** 某一步对相邻边的评估结果 */
+export interface AstarNeighborEvaluation {
+  edge_id: string
+  node_id: string
+  edge_weight: number
+  tentative_g: number
+  previous_g: number | null
+  accepted: boolean
+}
+
+/** 一次扩展迭代的完整快照 */
+export interface AstarStep {
+  iteration: number
+  current_id: string
+  open_set: AstarOpenEntry[]
+  closed_set: string[]
+  neighbors: AstarNeighborEvaluation[]
+}
+
+/** A* 求解指标。终点不可达时部分数值字段可能缺省 */
+export interface AstarMetrics {
+  found: boolean
+  path_cost: number | null
+  path_euclidean_distance: number | null
+  heuristic_scale: number | null
+  explored_nodes: number
+  step_count: number
+  node_count: number
+  edge_count: number
+  solve_seconds: number
+}
+
+/** A* 结果链接，仅有表格下载，无结果图片 */
+export interface AstarResultLinks {
+  csv: string
+  excel: string
+}
+
+/** A* 求解结果 */
+export interface AstarSolveResult {
+  result_id: string
+  created_at: string
+  start_to_goal_distance: number | null
+  path: string[]
+  path_edge_ids: string[]
+  steps: AstarStep[]
+  metrics: AstarMetrics
+  links: AstarResultLinks
+}
+
 /** 各 Demo 运行结果的公共结构，页面统一以此承载结果状态 */
 export interface DemoRunResult {
   result_id: string
@@ -181,6 +266,26 @@ export async function clusterKmeans(
 ): Promise<KMeansClusterResult> {
   const res: ApiResponse<KMeansClusterResult> = await fetcher(
     `/demo/kmeans/cluster`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  )
+  return res.data
+}
+
+/**
+ * 提交前端绘制的图并求解 A* 最短路径。求解在服务端同步完成，
+ * 返回结果同时包含完整的逐步探索过程，供前端动画回放。
+ * @param body 画板导出的节点、边与起终点
+ * @returns 求解结果（路径、步骤、指标与结果文件链接）
+ */
+export async function solveAstar(
+  body: AstarSolveRequest
+): Promise<AstarSolveResult> {
+  const res: ApiResponse<AstarSolveResult> = await fetcher(
+    `/demo/astar/solve`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
