@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ArrowRight, Minus, MousePointer2, Plus, Share2, Sparkles, Trash2 } from "lucide-react"
+import { ArrowRight, Minus, MousePointer2, Plus, Share2, Sparkles, Trash2, BrushCleaning } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -200,6 +200,7 @@ export function AstarPanel({
             disabled={disabled || nodes.length === 0}
             onClick={onClear}
           >
+            <BrushCleaning className="size-4" />
             清空画板
           </Button>
         </div>
@@ -359,11 +360,10 @@ export function AstarPanel({
                 >
                   <button
                     type="button"
-                    className={`truncate rounded px-1 py-1 text-left text-sm transition-colors hover:bg-accent ${
-                      selected?.kind === "edge" && selected.id === edge.id
+                    className={`truncate rounded px-1 py-1 text-left text-sm transition-colors hover:bg-accent ${selected?.kind === "edge" && selected.id === edge.id
                         ? "bg-accent font-medium"
                         : ""
-                    }`}
+                      }`}
                     onClick={() => onSelect({ kind: "edge", id: edge.id })}
                   >
                     {edge.source} {edge.directed ? "→" : "—"} {edge.target}
