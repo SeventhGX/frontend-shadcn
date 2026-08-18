@@ -8,9 +8,9 @@ import {
   MoreHorizontal,
   RefreshCw,
   Search,
-  Sparkles,
   Trash2,
   Upload,
+  CodeXml,
 } from "lucide-react"
 
 import { type KnowledgeFile } from "@/features/knowledge/api"
@@ -269,7 +269,7 @@ export function KnowledgeDataTable({
             onClick={() => onEmbed?.(Array.from(selectedIds))}
             disabled={selectedCount === 0 || embedding}
           >
-            <Sparkles size={16} />
+            <CodeXml size={16} />
             编码选中{selectedCount > 0 ? ` (${selectedCount})` : ""}
           </Button>
           <Button
@@ -379,7 +379,7 @@ export function KnowledgeDataTable({
                             disabled={item.is_embedded || embedding}
                             onClick={() => onEmbed?.([item.file_id])}
                           >
-                            <Sparkles size={16} />
+                            <CodeXml size={16} />
                             编码
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
