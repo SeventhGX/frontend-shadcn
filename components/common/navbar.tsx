@@ -28,7 +28,7 @@ export function Navbar() {
       <div className="flex h-10 items-center px-4 gap-4">
         {/* 左侧：回到首页 */}
         <Link href="/">
-          <Button variant="ghost" size="sm" className="gap-2">
+          <Button variant="boldtitle" size="sm" className="gap-2">
             <Home size={16} />
             首页
           </Button>
@@ -44,7 +44,7 @@ export function Navbar() {
           target="_blank"
           rel="noopener noreferrer"
         >
-          <Button variant="ghost" size="sm" className="gap-2">
+          <Button variant="title" size="sm" className="gap-2">
             <BookOpen size={16} />
             教程
           </Button>
@@ -56,7 +56,7 @@ export function Navbar() {
             <>
               {canEditDocs(user) && (
                 <Link href="/docs-edit" target="_blank">
-                  <Button variant="ghost" size="sm" className="gap-2">
+                  <Button variant="title" size="sm" className="gap-2">
                     <Pencil size={16} />
                     教程编辑
                   </Button>
