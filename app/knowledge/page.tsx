@@ -10,37 +10,60 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
 import {
+  autoTagKnowledgeFile,
   deleteKnowledgeFiles,
   embedKnowledgeFiles,
   getAllKnowledgeFiles,
+  getKnowledgeTags,
+  setKnowledgeTags,
   uploadKnowledgeFile,
   type KnowledgeFile,
+  type KnowledgeTag,
 } from "@/features/knowledge/api"
-import { KnowledgeDataTable } from "./data-table"
+import { KnowledgeDataTable, type AutoTagOptions } from "./data-table"
 import { KnowledgeChatPanel } from "./chat-panel"
+
+/** AI 打标请求超时后，按此节奏轮询后台生成结果 */
+const AUTO_TAG_POLL_INTERVAL_MS = 5000
+const AUTO_TAG_POLL_MAX_ATTEMPTS = 60
 
 export default function KnowledgePage() {
   const [files, setFiles] = React.useState<KnowledgeFile[]>([])
+  const [tags, setTags] = React.useState<KnowledgeTag[]>([])
   const [loading, setLoading] = React.useState(false)
   const [uploading, setUploading] = React.useState(false)
   const [embedding, setEmbedding] = React.useState(false)
 
-  const fetchFiles = React.useCallback(async () => {
+  const fetchFiles = React.useCallback(async (silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const res = await getAllKnowledgeFiles()
-      setFiles(res?.data ?? [])
+      const list = Array.isArray(res?.data) ? res.data : []
+      setFiles(list)
+      return list
     } catch (error) {
       console.error(error)
       toast.error("获取知识库文件列表失败")
+      return []
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
+    }
+  }, [])
+
+  const fetchTags = React.useCallback(async () => {
+    try {
+      const res = await getKnowledgeTags()
+      setTags(Array.isArray(res?.data) ? res.data : [])
+    } catch (error) {
+      console.error(error)
+      toast.error("获取标签列表失败")
     }
   }, [])
 
   React.useEffect(() => {
     fetchFiles()
-  }, [fetchFiles])
+    fetchTags()
+  }, [fetchFiles, fetchTags])
 
   const handleUpload = async (files: File[]) => {
     if (files.length === 0) return
@@ -114,6 +137,71 @@ export default function KnowledgePage() {
     }
   }
 
+  const handleSaveTags = async (
+    fileId: string,
+    tagIds: string[],
+    newTags: string[]
+  ) => {
+    try {
+      await setKnowledgeTags({
+        file_id: fileId,
+        tag_ids: tagIds,
+        new_tags: newTags,
+      })
+      toast.success("标签已保存")
+      await Promise.all([fetchFiles(), fetchTags()])
+    } catch (error) {
+      console.error(error)
+      toast.error("保存标签失败，请稍后重试")
+    }
+  }
+
+  // 请求超时但后端仍在生成时，轮询文件列表直到标签发生变化
+  const pollAutoTagResult = React.useCallback(
+    async (fileId: string, beforeCount: number) => {
+      for (let i = 0; i < AUTO_TAG_POLL_MAX_ATTEMPTS; i += 1) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, AUTO_TAG_POLL_INTERVAL_MS)
+        )
+        const list = await fetchFiles(true)
+        const tags = list.find((item) => item.file_id === fileId)?.tags
+        if (tags && tags.length > beforeCount) return tags
+      }
+      return undefined
+    },
+    [fetchFiles]
+  )
+
+  const handleAutoTag = async (fileId: string, options: AutoTagOptions) => {
+    const beforeCount =
+      files.find((item) => item.file_id === fileId)?.tags?.length ?? 0
+
+    try {
+      await autoTagKnowledgeFile({
+        file_id: fileId,
+        max_tags: options.maxTags,
+        allow_new_tags: options.allowNewTags,
+      })
+    } catch (error) {
+      console.error(error)
+      toast.warning("AI 打标耗时较长，正在等待后台生成结果...")
+      const tags = await pollAutoTagResult(fileId, beforeCount)
+      if (!tags) {
+        toast.error("AI 自动打标未在预期时间内完成，请稍后刷新查看")
+        return undefined
+      }
+      await fetchTags()
+      toast.success(`AI 打标完成，当前共 ${tags.length} 个标签`)
+      return tags
+    }
+
+    // 以刷新后的文件数据为准，避免依赖打标接口的返回结构
+    const [list] = await Promise.all([fetchFiles(), fetchTags()])
+    const tags = list.find((item) => item.file_id === fileId)?.tags ?? []
+    toast.success(`AI 打标完成，当前共 ${tags.length} 个标签`)
+    return tags
+  }
+
   return (
     <AuthGuard>
       <div className="h-full p-4">
@@ -128,13 +216,16 @@ export default function KnowledgePage() {
               <div className="min-h-0 flex-1">
                 <KnowledgeDataTable
                   data={files}
+                  tags={tags}
                   loading={loading}
                   uploading={uploading}
                   embedding={embedding}
-                  onRefresh={fetchFiles}
+                  onRefresh={() => fetchFiles()}
                   onUpload={handleUpload}
                   onEmbed={handleEmbed}
                   onDelete={handleDelete}
+                  onSaveTags={handleSaveTags}
+                  onAutoTag={handleAutoTag}
                 />
               </div>
             </div>

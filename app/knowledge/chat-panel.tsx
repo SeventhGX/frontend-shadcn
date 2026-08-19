@@ -17,6 +17,7 @@ import {
   retrieveKnowledge,
   type KnowledgeChunk,
   type KnowledgeFile,
+  type KnowledgeTag,
   type RetrievalMethod,
 } from "@/features/knowledge/api"
 import { cn, uuid } from "@/lib/utils"
@@ -174,7 +175,7 @@ function RetrievalSettings({
       </div>
 
       {retrievalMethod === "hybrid" && (
-        <div className="flex min-w-[220px] flex-1 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-4">
+        <div className="flex min-w-55 flex-1 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-4">
           <div className="flex items-center gap-2 text-xs">
             <span className="text-muted-foreground w-10 shrink-0">语义</span>
             <Slider
@@ -312,8 +313,17 @@ export function KnowledgeChatPanel({ files }: KnowledgeChatPanelProps) {
     [files]
   )
 
-  // 问答范围：为空表示检索全部已编码知识库
-  const [scopeIds, setScopeIds] = React.useState<string[]>([])
+  // 问答范围：按标签批量选择，为空表示检索全部已编码知识库
+  const [scopeTagIds, setScopeTagIds] = React.useState<string[]>([])
+
+  // 已编码文件上出现过的标签（不含未编码文件的标签）
+  const availableTags = React.useMemo(() => {
+    const map = new Map<string, KnowledgeTag>()
+    embeddedFiles.forEach((file) => {
+      file.tags?.forEach((tag) => map.set(tag.id, tag))
+    })
+    return Array.from(map.values())
+  }, [embeddedFiles])
 
   // 检索参数
   const [retrievalMethod, setRetrievalMethod] =
@@ -337,28 +347,39 @@ export function KnowledgeChatPanel({ files }: KnowledgeChatPanelProps) {
   const chatComposingRef = React.useRef(false)
   const retrieveComposingRef = React.useRef(false)
 
-  // 移除已不存在（如被删除/取消编码）的范围文件
+  // 移除已不存在（如被删除/取消编码）的范围标签
   React.useEffect(() => {
-    setScopeIds((prev) =>
-      prev.filter((id) => embeddedFiles.some((f) => f.file_id === id))
+    setScopeTagIds((prev) =>
+      prev.filter((id) => availableTags.some((tag) => tag.id === id))
     )
-  }, [embeddedFiles])
+  }, [availableTags])
 
   React.useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
   const noEmbedded = embeddedFiles.length === 0
-  const effectiveFileIds = scopeIds.length > 0 ? scopeIds : null
+
+  // 命中所选标签的已编码文件；未选标签时为 null（表示全部）
+  const effectiveFileIds = React.useMemo(() => {
+    if (scopeTagIds.length === 0) return null
+    return embeddedFiles
+      .filter((file) => file.tags?.some((tag) => scopeTagIds.includes(tag.id)))
+      .map((file) => file.file_id)
+  }, [embeddedFiles, scopeTagIds])
+
+  // 选了标签却没有命中任何文件时，不能退化成检索全部
+  const noScopeMatch = effectiveFileIds !== null && effectiveFileIds.length === 0
+  const disabled = noEmbedded || noScopeMatch
 
   const scopeLabel =
-    scopeIds.length === 0
+    scopeTagIds.length === 0
       ? "全部知识库"
-      : `已选 ${scopeIds.length} 个文件`
+      : `已选 ${scopeTagIds.length} 个标签 · ${effectiveFileIds?.length ?? 0} 个文件`
 
-  const toggleScope = (fileId: string, checked: boolean) => {
-    setScopeIds((prev) =>
-      checked ? [...prev, fileId] : prev.filter((id) => id !== fileId)
+  const toggleScope = (tagId: string, checked: boolean) => {
+    setScopeTagIds((prev) =>
+      checked ? [...prev, tagId] : prev.filter((id) => id !== tagId)
     )
   }
 
@@ -468,22 +489,36 @@ export function KnowledgeChatPanel({ files }: KnowledgeChatPanelProps) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="max-h-72 w-64 overflow-y-auto">
-        <DropdownMenuLabel>问答范围（不选=全部）</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {embeddedFiles.map((file) => (
-          <DropdownMenuCheckboxItem
-            key={file.file_id}
-            checked={scopeIds.includes(file.file_id)}
-            onCheckedChange={(checked) =>
-              toggleScope(file.file_id, !!checked)
-            }
-            onSelect={(e) => e.preventDefault()}
+        <DropdownMenuLabel className="flex items-center justify-between gap-2">
+          <span>按标签选择范围（不选=全部）</span>
+          <button
+            type="button"
+            disabled={scopeTagIds.length === 0}
+            onClick={() => setScopeTagIds([])}
+            className="text-muted-foreground hover:text-foreground shrink-0 text-xs font-normal disabled:pointer-events-none disabled:opacity-50"
           >
-            <span className="truncate" title={file.filename}>
-              {file.filename}
-            </span>
-          </DropdownMenuCheckboxItem>
-        ))}
+            清空
+          </button>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {availableTags.length === 0 ? (
+          <div className="text-muted-foreground px-2 py-1.5 text-xs">
+            已编码文件暂无标签，请先在左侧为文件添加标签
+          </div>
+        ) : (
+          availableTags.map((tag) => (
+            <DropdownMenuCheckboxItem
+              key={tag.id}
+              checked={scopeTagIds.includes(tag.id)}
+              onCheckedChange={(checked) => toggleScope(tag.id, !!checked)}
+              onSelect={(e) => e.preventDefault()}
+            >
+              <span className="truncate" title={tag.name}>
+                {tag.name}
+              </span>
+            </DropdownMenuCheckboxItem>
+          ))
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -509,6 +544,12 @@ export function KnowledgeChatPanel({ files }: KnowledgeChatPanelProps) {
       {noEmbedded && (
         <div className="text-muted-foreground rounded-md border border-dashed p-3 text-center text-sm">
           暂无已编码的文件，请先在左侧选择文件并点击「编码选中」完成编码后再提问。
+        </div>
+      )}
+
+      {!noEmbedded && noScopeMatch && (
+        <div className="text-muted-foreground rounded-md border border-dashed p-3 text-center text-sm">
+          所选标签没有匹配到任何已编码文件，请调整范围。
         </div>
       )}
 
@@ -557,14 +598,18 @@ export function KnowledgeChatPanel({ files }: KnowledgeChatPanelProps) {
             onCompositionStart={() => (chatComposingRef.current = true)}
             onCompositionEnd={() => (chatComposingRef.current = false)}
             placeholder={
-              noEmbedded ? "请先完成文件编码" : "输入你的问题，Enter 发送"
+              noEmbedded
+                ? "请先完成文件编码"
+                : noScopeMatch
+                  ? "当前标签范围无可用文件"
+                  : "输入你的问题，Enter 发送"
             }
-            disabled={noEmbedded || sending}
+            disabled={disabled || sending}
             className="max-h-40 min-h-11 flex-1 resize-none"
           />
           <Button
             onClick={handleSend}
-            disabled={noEmbedded || sending || !input.trim()}
+            disabled={disabled || sending || !input.trim()}
             className="shrink-0"
           >
             <Send size={16} />
@@ -588,15 +633,19 @@ export function KnowledgeChatPanel({ files }: KnowledgeChatPanelProps) {
             onCompositionStart={() => (retrieveComposingRef.current = true)}
             onCompositionEnd={() => (retrieveComposingRef.current = false)}
             placeholder={
-              noEmbedded ? "请先完成文件编码" : "输入检索关键词，Enter 检索"
+              noEmbedded
+                ? "请先完成文件编码"
+                : noScopeMatch
+                  ? "当前标签范围无可用文件"
+                  : "输入检索关键词，Enter 检索"
             }
-            disabled={noEmbedded || retrieving}
+            disabled={disabled || retrieving}
             className="max-h-40 min-h-11 flex-1 resize-none"
           />
           <Button
             variant="outline"
             onClick={handleRetrieve}
-            disabled={noEmbedded || retrieving || !retrieveQuery.trim()}
+            disabled={disabled || retrieving || !retrieveQuery.trim()}
             className="shrink-0"
           >
             <Search size={16} />

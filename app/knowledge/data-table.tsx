@@ -5,19 +5,42 @@ import { format } from "date-fns"
 import {
   ChevronLeft,
   ChevronRight,
+  Loader2,
   MoreHorizontal,
   RefreshCw,
   Search,
+  Sparkles,
+  Tag as TagIcon,
   Trash2,
   Upload,
   CodeXml,
+  X,
 } from "lucide-react"
 
-import { type KnowledgeFile } from "@/features/knowledge/api"
+import {
+  TAG_NAME_MAX_LENGTH,
+  TAG_SELECT_MAX_COUNT,
+  type KnowledgeFile,
+  type KnowledgeTag,
+} from "@/features/knowledge/api"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import {
   Select,
   SelectContent,
@@ -54,6 +77,8 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50]
 
 interface KnowledgeDataTableProps {
   data: KnowledgeFile[]
+  /** 当前用户的标签库 */
+  tags?: KnowledgeTag[]
   loading?: boolean
   /** 正在上传文件 */
   uploading?: boolean
@@ -63,6 +88,23 @@ interface KnowledgeDataTableProps {
   onUpload?: (files: File[]) => void
   onEmbed?: (fileIds: string[]) => void
   onDelete?: (fileIds: string[]) => void
+  /** 保存文档标签（覆盖式），tagIds 来自标签库，newTags 为手动输入的新标签名 */
+  onSaveTags?: (
+    fileId: string,
+    tagIds: string[],
+    newTags: string[]
+  ) => Promise<void> | void
+  /** AI 自动打标，返回该文档打标后的完整标签列表 */
+  onAutoTag?: (
+    fileId: string,
+    options: AutoTagOptions
+  ) => Promise<KnowledgeTag[] | undefined>
+}
+
+/** AI 自动打标的可调参数 */
+export interface AutoTagOptions {
+  maxTags: number
+  allowNewTags: boolean
 }
 
 function formatDate(value?: string) {
@@ -72,8 +114,308 @@ function formatDate(value?: string) {
   return format(date, "yyyy-MM-dd HH:mm")
 }
 
+/** 标签单元格：默认折叠展示，悬浮后展开全部标签 */
+function TagCell({ tags }: { tags?: KnowledgeTag[] }) {
+  if (!tags || tags.length === 0) {
+    return <span className="text-muted-foreground text-xs">-</span>
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="flex w-fit cursor-default items-center gap-1">
+          <Badge variant="secondary" className="max-w-24 truncate">
+            {tags[0].name}
+          </Badge>
+          {tags.length > 1 && (
+            <Badge variant="outline">+{tags.length - 1}</Badge>
+          )}
+        </div>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-72">
+        <div className="flex flex-wrap gap-1">
+          {tags.map((tag) => (
+            <span
+              key={tag.id}
+              className="bg-background/20 rounded px-1.5 py-0.5"
+            >
+              {tag.name}
+            </span>
+          ))}
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+/** 标签编辑弹窗：支持标签库搜索选择、手动输入、AI 自动生成 */
+function TagEditorDialog({
+  file,
+  allTags,
+  onClose,
+  onSave,
+  onAutoTag,
+}: {
+  file: KnowledgeFile
+  allTags: KnowledgeTag[]
+  onClose: () => void
+  onSave?: (
+    fileId: string,
+    tagIds: string[],
+    newTags: string[]
+  ) => Promise<void> | void
+  onAutoTag?: (
+    fileId: string,
+    options: AutoTagOptions
+  ) => Promise<KnowledgeTag[] | undefined>
+}) {
+  const [selectedIds, setSelectedIds] = React.useState<string[]>(
+    () => file.tags?.map((tag) => tag.id) ?? []
+  )
+  const [newTags, setNewTags] = React.useState<string[]>([])
+  // AI 自动打标可能返回标签库中尚未同步的新标签
+  const [extraTags, setExtraTags] = React.useState<KnowledgeTag[]>(
+    () => file.tags ?? []
+  )
+  const [keyword, setKeyword] = React.useState("")
+  const [maxTagsInput, setMaxTagsInput] = React.useState("5")
+  const [allowNewTags, setAllowNewTags] = React.useState(true)
+  const [saving, setSaving] = React.useState(false)
+  const [autoTagging, setAutoTagging] = React.useState(false)
+
+  const maxTags = Math.min(
+    TAG_SELECT_MAX_COUNT,
+    Math.max(1, Number(maxTagsInput) || 1)
+  )
+
+  const tagMap = React.useMemo(() => {
+    const map = new Map<string, KnowledgeTag>()
+    ;[...extraTags, ...allTags].forEach((tag) => map.set(tag.id, tag))
+    return map
+  }, [allTags, extraTags])
+
+  const trimmedKeyword = keyword.trim()
+  const lowerKeyword = trimmedKeyword.toLowerCase()
+
+  const filteredTags = React.useMemo(() => {
+    if (!lowerKeyword) return allTags
+    return allTags.filter((tag) =>
+      tag.name.toLowerCase().includes(lowerKeyword)
+    )
+  }, [allTags, lowerKeyword])
+
+  const canCreate =
+    trimmedKeyword.length > 0 &&
+    trimmedKeyword.length <= TAG_NAME_MAX_LENGTH &&
+    !allTags.some((tag) => tag.name.toLowerCase() === lowerKeyword) &&
+    !newTags.some((name) => name.toLowerCase() === lowerKeyword)
+
+  const toggleTag = (tagId: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(tagId)
+        ? prev.filter((id) => id !== tagId)
+        : prev.length >= TAG_SELECT_MAX_COUNT
+          ? prev
+          : [...prev, tagId]
+    )
+  }
+
+  const addNewTag = () => {
+    if (!canCreate || newTags.length >= TAG_SELECT_MAX_COUNT) return
+    setNewTags((prev) => [...prev, trimmedKeyword])
+    setKeyword("")
+  }
+
+  const handleAutoTag = async () => {
+    if (!onAutoTag) return
+    try {
+      setAutoTagging(true)
+      const tags = await onAutoTag(file.file_id, { maxTags, allowNewTags })
+      if (!tags || tags.length === 0) return
+      setExtraTags((prev) => {
+        const map = new Map(prev.map((tag) => [tag.id, tag]))
+        tags.forEach((tag) => map.set(tag.id, tag))
+        return Array.from(map.values())
+      })
+      setSelectedIds((prev) =>
+        Array.from(new Set([...prev, ...tags.map((tag) => tag.id)]))
+      )
+    } finally {
+      setAutoTagging(false)
+    }
+  }
+
+  const handleSave = async () => {
+    try {
+      setSaving(true)
+      await onSave?.(file.file_id, selectedIds, newTags)
+      onClose()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const totalSelected = selectedIds.length + newTags.length
+  const busy = saving || autoTagging
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader className="min-w-0">
+          <DialogTitle>添加标签</DialogTitle>
+          <DialogDescription className="min-w-0">
+            <span className="block truncate" title={file.filename}>
+              为「{file.filename}」设置标签
+            </span>
+            <span>保存后将覆盖该文档的现有标签。</span>
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* 已选标签 */}
+        <div className="min-h-9 min-w-0 rounded-md border p-2">
+          {totalSelected === 0 ? (
+            <span className="text-muted-foreground text-sm">暂未选择标签</span>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {selectedIds.map((id) => (
+                <Badge key={id} variant="secondary" className="gap-1">
+                  <span className="max-w-32 truncate">
+                    {tagMap.get(id)?.name ?? id}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="移除标签"
+                    onClick={() =>
+                      setSelectedIds((prev) =>
+                        prev.filter((item) => item !== id)
+                      )
+                    }
+                  >
+                    <X size={12} />
+                  </button>
+                </Badge>
+              ))}
+              {newTags.map((name) => (
+                <Badge key={`new-${name}`} variant="outline" className="gap-1">
+                  <span className="max-w-32 truncate">{name}</span>
+                  <button
+                    type="button"
+                    aria-label="移除标签"
+                    onClick={() =>
+                      setNewTags((prev) => prev.filter((item) => item !== name))
+                    }
+                  >
+                    <X size={12} />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 标签库搜索 + 手动输入 */}
+        <Command shouldFilter={false} className="min-w-0 rounded-md border">
+          <CommandInput
+            value={keyword}
+            onValueChange={setKeyword}
+            placeholder="搜索标签库，或输入新标签名后回车创建"
+            maxLength={TAG_NAME_MAX_LENGTH}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.nativeEvent.isComposing && canCreate) {
+                e.preventDefault()
+                addNewTag()
+              }
+            }}
+          />
+          <CommandList className="max-h-52">
+            {canCreate && (
+              <CommandGroup heading="新建标签">
+                <CommandItem value={`__create__${trimmedKeyword}`} onSelect={addNewTag}>
+                  <TagIcon size={16} />
+                  创建「{trimmedKeyword}」
+                </CommandItem>
+              </CommandGroup>
+            )}
+            {filteredTags.length === 0 ? (
+              !canCreate && <CommandEmpty>标签库为空</CommandEmpty>
+            ) : (
+              <CommandGroup heading="标签库">
+                {filteredTags.map((tag) => {
+                  const checked = selectedIds.includes(tag.id)
+                  return (
+                    <CommandItem
+                      key={tag.id}
+                      value={tag.id}
+                      onSelect={() => toggleTag(tag.id)}
+                    >
+                      <Checkbox checked={checked} className="pointer-events-none" />
+                      <span className="truncate">{tag.name}</span>
+                    </CommandItem>
+                  )
+                })}
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
+
+        {/* AI 自动生成 */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md border p-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleAutoTag}
+            disabled={busy || !onAutoTag}
+          >
+            {autoTagging ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Sparkles size={16} />
+            )}
+            {autoTagging ? "AI 生成中..." : "AI 自动生成"}
+          </Button>
+          <label className="flex items-center gap-1.5 text-xs">
+            <span className="text-muted-foreground">最多生成</span>
+            <Input
+              type="number"
+              min={1}
+              max={TAG_SELECT_MAX_COUNT}
+              step={1}
+              value={maxTagsInput}
+              disabled={busy}
+              onChange={(e) => setMaxTagsInput(e.target.value)}
+              onBlur={() => setMaxTagsInput(String(maxTags))}
+              className="h-7 w-16 px-2 py-0 text-xs tabular-nums"
+            />
+            <span className="text-muted-foreground">个</span>
+          </label>
+          <label className="flex items-center gap-1.5 text-xs">
+            <Switch
+              checked={allowNewTags}
+              disabled={busy}
+              onCheckedChange={setAllowNewTags}
+            />
+            <span className="text-muted-foreground">允许新建标签</span>
+          </label>
+        </div>
+
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline" disabled={busy}>
+              取消
+            </Button>
+          </DialogClose>
+          <Button onClick={handleSave} disabled={busy}>
+            保存
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function KnowledgeDataTable({
   data,
+  tags = [],
   loading = false,
   uploading = false,
   embedding = false,
@@ -81,6 +423,8 @@ export function KnowledgeDataTable({
   onUpload,
   onEmbed,
   onDelete,
+  onSaveTags,
+  onAutoTag,
 }: KnowledgeDataTableProps) {
   const [query, setQuery] = React.useState("")
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
@@ -90,6 +434,8 @@ export function KnowledgeDataTable({
   const [deleteTargetIds, setDeleteTargetIds] = React.useState<string[] | null>(
     null
   )
+  // 待编辑标签的文件 ID
+  const [tagTargetId, setTagTargetId] = React.useState<string | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   // 根据文件名过滤
@@ -171,6 +517,11 @@ export function KnowledgeDataTable({
     [data, deleteTargetIds]
   )
 
+  const tagTargetFile = React.useMemo(
+    () => data.find((item) => item.file_id === tagTargetId) ?? null,
+    [data, tagTargetId]
+  )
+
   // 确认删除
   const confirmDelete = () => {
     if (!deleteTargetIds) return
@@ -234,6 +585,18 @@ export function KnowledgeDataTable({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 标签编辑弹窗 */}
+      {tagTargetFile && (
+        <TagEditorDialog
+          key={tagTargetFile.file_id}
+          file={tagTargetFile}
+          allTags={tags}
+          onClose={() => setTagTargetId(null)}
+          onSave={onSaveTags}
+          onAutoTag={onAutoTag}
+        />
+      )}
 
       {/* 工具栏 */}
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -307,6 +670,7 @@ export function KnowledgeDataTable({
                 />
               </TableHead>
               <TableHead>文件名</TableHead>
+              <TableHead className="w-40">标签</TableHead>
               <TableHead className="w-44">上传日期</TableHead>
               <TableHead className="w-32">是否完成编码</TableHead>
               <TableHead className="w-12" />
@@ -316,7 +680,7 @@ export function KnowledgeDataTable({
             {loading ? (
               <TableRow>
                 <TableCell
-                  colSpan={5}
+                  colSpan={6}
                   className="text-muted-foreground h-24 text-center"
                 >
                   加载中...
@@ -325,7 +689,7 @@ export function KnowledgeDataTable({
             ) : pagedData.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={5}
+                  colSpan={6}
                   className="text-muted-foreground h-24 text-center"
                 >
                   暂无数据
@@ -354,6 +718,9 @@ export function KnowledgeDataTable({
                     >
                       {item.filename}
                     </TableCell>
+                    <TableCell>
+                      <TagCell tags={item.tags} />
+                    </TableCell>
                     <TableCell>{formatDate(item.create_time)}</TableCell>
                     <TableCell>
                       {item.is_embedded ? (
@@ -381,6 +748,12 @@ export function KnowledgeDataTable({
                           >
                             <CodeXml size={16} />
                             编码
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => setTagTargetId(item.file_id)}
+                          >
+                            <TagIcon size={16} />
+                            添加标签
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem

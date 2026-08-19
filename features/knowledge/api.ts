@@ -1,5 +1,17 @@
 import { fetcher } from '@/lib/fetcher'
 
+/** 知识文档标签（按用户隔离） */
+export interface KnowledgeTag {
+  id: string
+  name: string
+}
+
+/** 单个标签名称长度上限 */
+export const TAG_NAME_MAX_LENGTH = 50
+
+/** 单次手动设置时已有标签 / 新建标签各自的数量上限 */
+export const TAG_SELECT_MAX_COUNT = 20
+
 /** 知识库文件条目 */
 export interface KnowledgeFile {
   file_id: string
@@ -8,6 +20,7 @@ export interface KnowledgeFile {
   file_type: string
   is_embedded: boolean
   create_time?: string
+  tags?: KnowledgeTag[]
 }
 
 interface ApiResponse<T> {
@@ -76,10 +89,15 @@ export async function getAllKnowledgeFiles(): Promise<ApiResponse<KnowledgeFile[
 /**
  * 上传本地文件到知识库
  * @param file 需要上传的文件
+ * @param tagNames 可选，本次上传统一应用的标签名（已存在的同名标签会被复用）
  */
-export async function uploadKnowledgeFile(file: File): Promise<ApiResponse<KnowledgeFile[]>> {
+export async function uploadKnowledgeFile(
+  file: File,
+  tagNames?: string[]
+): Promise<ApiResponse<KnowledgeFile[]>> {
   const formData = new FormData()
   formData.append('file', file)
+  tagNames?.forEach((name) => formData.append('tag_names', name))
 
   // 注意：使用 FormData 时不要手动设置 Content-Type，
   // 浏览器会自动带上带 boundary 的 multipart/form-data。
@@ -88,6 +106,86 @@ export async function uploadKnowledgeFile(file: File): Promise<ApiResponse<Knowl
     {
       method: 'POST',
       body: formData,
+    }
+  )
+}
+
+/**
+ * 获取当前用户的标签库
+ */
+export async function getKnowledgeTags(): Promise<ApiResponse<KnowledgeTag[]>> {
+  return fetcher(
+    `/knowledge/v1/tags`,
+    { method: 'GET' }
+  )
+}
+
+/** 手动设置文档标签的请求参数 */
+export interface SetKnowledgeTagsRequest {
+  file_id: string
+  /** 从标签库中选择的标签 ID */
+  tag_ids?: string[]
+  /** 同时创建的自定义标签名 */
+  new_tags?: string[]
+}
+
+/**
+ * 手动设置文档标签（覆盖文档当前标签，全部为空表示清空）
+ */
+export async function setKnowledgeTags(
+  request: SetKnowledgeTagsRequest
+): Promise<ApiResponse<KnowledgeTag[]>> {
+  const { file_id: fileId, tag_ids: tagIds = [], new_tags: newTags = [] } = request
+
+  return fetcher(
+    `/knowledge/v1/set_tags`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        file_id: fileId,
+        tag_ids: tagIds,
+        new_tags: newTags,
+      }),
+    }
+  )
+}
+
+/** AI 自动打标的请求参数 */
+export interface AutoTagRequest {
+  file_id: string
+  /** 建议标签数量上限 */
+  max_tags?: number
+  /** 是否允许把 AI 建议的新名称加入标签库 */
+  allow_new_tags?: boolean
+}
+
+/** AI 打标需要读取全文，超过该时长视为请求超时（后端通常仍在后台继续生成） */
+export const AUTO_TAG_TIMEOUT_MS = 180_000
+
+/**
+ * AI 自动打标：在文档原有标签基础上追加 AI 建议的标签
+ */
+export async function autoTagKnowledgeFile(
+  request: AutoTagRequest
+): Promise<ApiResponse<KnowledgeTag[]>> {
+  const { file_id: fileId, max_tags: maxTags = 5, allow_new_tags: allowNewTags = true } = request
+
+  return fetcher(
+    `/knowledge/v1/auto_tag`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        file_id: fileId,
+        max_tags: maxTags,
+        allow_new_tags: allowNewTags,
+      }),
+      signal: AbortSignal.timeout(AUTO_TAG_TIMEOUT_MS),
     }
   )
 }
