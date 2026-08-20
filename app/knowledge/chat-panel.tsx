@@ -374,7 +374,7 @@ export function KnowledgeChatPanel({ files }: KnowledgeChatPanelProps) {
 
   const scopeLabel =
     scopeTagIds.length === 0
-      ? "全部知识库"
+      ? "全部知识库（含公共）"
       : `已选 ${scopeTagIds.length} 个标签 · ${effectiveFileIds?.length ?? 0} 个文件`
 
   const toggleScope = (tagId: string, checked: boolean) => {
@@ -490,7 +490,7 @@ export function KnowledgeChatPanel({ files }: KnowledgeChatPanelProps) {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="max-h-72 w-64 overflow-y-auto">
         <DropdownMenuLabel className="flex items-center justify-between gap-2">
-          <span>按标签选择范围（不选=全部）</span>
+          <span>按标签选择范围（不选=个人+公共）</span>
           <button
             type="button"
             disabled={scopeTagIds.length === 0}

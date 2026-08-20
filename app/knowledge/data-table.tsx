@@ -5,7 +5,9 @@ import { format } from "date-fns"
 import {
   ChevronLeft,
   ChevronRight,
+  Globe,
   Loader2,
+  Lock,
   MoreHorizontal,
   RefreshCw,
   Search,
@@ -75,19 +77,36 @@ import {
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50]
 
+/** 列表可见范围筛选 */
+type ScopeFilter = "all" | "mine" | "public"
+
+const SCOPE_OPTIONS: Array<{ value: ScopeFilter; label: string }> = [
+  { value: "all", label: "全部文件" },
+  { value: "mine", label: "个人文件" },
+  { value: "public", label: "公共文件" },
+]
+
 interface KnowledgeDataTableProps {
   data: KnowledgeFile[]
   /** 当前用户的标签库 */
   tags?: KnowledgeTag[]
+  /** 当前登录用户名，用于判断公共文件是否由本人发布 */
+  currentUserName?: string
   loading?: boolean
   /** 正在上传文件 */
   uploading?: boolean
   /** 正在编码文件 */
   embedding?: boolean
+  /** 正在公开 / 取消公开文件 */
+  publishing?: boolean
   onRefresh?: () => void
   onUpload?: (files: File[]) => void
   onEmbed?: (fileIds: string[]) => void
   onDelete?: (fileIds: string[]) => void
+  /** 公开已编码的个人文件 */
+  onPublish?: (fileIds: string[]) => void
+  /** 取消公开由本人发布的公共文件 */
+  onUnpublish?: (fileIds: string[]) => void
   /** 保存文档标签（覆盖式），tagIds 来自标签库，newTags 为手动输入的新标签名 */
   onSaveTags?: (
     fileId: string,
@@ -123,12 +142,14 @@ function TagCell({ tags }: { tags?: KnowledgeTag[] }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div className="flex w-fit cursor-default items-center gap-1">
-          <Badge variant="secondary" className="max-w-24 truncate">
+        <div className="flex w-fit max-w-full cursor-default items-center gap-1">
+          <Badge variant="secondary" className="min-w-0 truncate">
             {tags[0].name}
           </Badge>
           {tags.length > 1 && (
-            <Badge variant="outline">+{tags.length - 1}</Badge>
+            <Badge variant="outline" className="shrink-0">
+              +{tags.length - 1}
+            </Badge>
           )}
         </div>
       </TooltipTrigger>
@@ -416,17 +437,22 @@ function TagEditorDialog({
 export function KnowledgeDataTable({
   data,
   tags = [],
+  currentUserName,
   loading = false,
   uploading = false,
   embedding = false,
+  publishing = false,
   onRefresh,
   onUpload,
   onEmbed,
   onDelete,
+  onPublish,
+  onUnpublish,
   onSaveTags,
   onAutoTag,
 }: KnowledgeDataTableProps) {
   const [query, setQuery] = React.useState("")
+  const [scope, setScope] = React.useState<ScopeFilter>("all")
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
   const [page, setPage] = React.useState(1)
   const [pageSize, setPageSize] = React.useState(10)
@@ -438,14 +464,23 @@ export function KnowledgeDataTable({
   const [tagTargetId, setTagTargetId] = React.useState<string | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
-  // 根据文件名过滤
+  // 公共文件只能由原发布者取消公开，其余写操作一律禁用
+  const canUnpublishFile = React.useCallback(
+    (item: KnowledgeFile) =>
+      !!item.is_public && !!currentUserName && item.source === currentUserName,
+    [currentUserName]
+  )
+
+  // 根据可见范围和文件名过滤
   const filteredData = React.useMemo(() => {
     const keyword = query.trim().toLowerCase()
-    if (!keyword) return data
-    return data.filter((item) =>
-      item.filename.toLowerCase().includes(keyword)
-    )
-  }, [data, query])
+    return data.filter((item) => {
+      if (scope === "mine" && item.is_public) return false
+      if (scope === "public" && !item.is_public) return false
+      if (keyword && !item.filename.toLowerCase().includes(keyword)) return false
+      return true
+    })
+  }, [data, query, scope])
 
   const totalPages = Math.max(1, Math.ceil(filteredData.length / pageSize))
 
@@ -461,15 +496,29 @@ export function KnowledgeDataTable({
     return filteredData.slice(start, start + pageSize)
   }, [filteredData, page, pageSize])
 
+  // 仅允许勾选可执行批量操作的文件
+  const isSelectable = React.useCallback(
+    (item: KnowledgeFile) => !item.is_public || canUnpublishFile(item),
+    [canUnpublishFile]
+  )
+
+  const selectablePagedData = React.useMemo(
+    () => pagedData.filter(isSelectable),
+    [pagedData, isSelectable]
+  )
+
   // 当前页是否全选
   const allPageSelected =
-    pagedData.length > 0 && pagedData.every((item) => selectedIds.has(item.file_id))
-  const somePageSelected = pagedData.some((item) => selectedIds.has(item.file_id))
+    selectablePagedData.length > 0 &&
+    selectablePagedData.every((item) => selectedIds.has(item.file_id))
+  const somePageSelected = selectablePagedData.some((item) =>
+    selectedIds.has(item.file_id)
+  )
 
   const toggleAllOnPage = (checked: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
-      pagedData.forEach((item) => {
+      selectablePagedData.forEach((item) => {
         if (checked) next.add(item.file_id)
         else next.delete(item.file_id)
       })
@@ -500,6 +549,31 @@ export function KnowledgeDataTable({
   }
 
   const selectedCount = selectedIds.size
+
+  const selectedFiles = React.useMemo(
+    () => data.filter((item) => selectedIds.has(item.file_id)),
+    [data, selectedIds]
+  )
+
+  // 公共文件不参与编码、删除等写操作
+  const ownedSelectedIds = React.useMemo(
+    () =>
+      selectedFiles.filter((item) => !item.is_public).map((item) => item.file_id),
+    [selectedFiles]
+  )
+
+  const publishableIds = React.useMemo(
+    () =>
+      selectedFiles
+        .filter((item) => !item.is_public && item.is_embedded)
+        .map((item) => item.file_id),
+    [selectedFiles]
+  )
+
+  const unpublishableIds = React.useMemo(
+    () => selectedFiles.filter(canUnpublishFile).map((item) => item.file_id),
+    [selectedFiles, canUnpublishFile]
+  )
 
   // 打开删除确认弹窗
   const requestDelete = (fileIds: string[]) => {
@@ -600,17 +674,37 @@ export function KnowledgeDataTable({
 
       {/* 工具栏 */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="relative w-full max-w-xs">
-          <Search className="text-muted-foreground absolute top-1/2 left-2 size-4 -translate-y-1/2" />
-          <Input
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value)
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-full max-w-xs">
+            <Search className="text-muted-foreground absolute top-1/2 left-2 size-4 -translate-y-1/2" />
+            <Input
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value)
+                setPage(1)
+              }}
+              placeholder="搜索文件名..."
+              className="pl-8"
+            />
+          </div>
+          <Select
+            value={scope}
+            onValueChange={(value) => {
+              setScope(value as ScopeFilter)
               setPage(1)
             }}
-            placeholder="搜索文件名..."
-            className="pl-8"
-          />
+          >
+            <SelectTrigger size="sm" className="w-28">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SCOPE_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -629,17 +723,37 @@ export function KnowledgeDataTable({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => onEmbed?.(Array.from(selectedIds))}
-            disabled={selectedCount === 0 || embedding}
+            onClick={() => onEmbed?.(ownedSelectedIds)}
+            disabled={ownedSelectedIds.length === 0 || embedding}
           >
             <CodeXml size={16} />
-            编码选中{selectedCount > 0 ? ` (${selectedCount})` : ""}
+            编码选中
+            {ownedSelectedIds.length > 0 ? ` (${ownedSelectedIds.length})` : ""}
           </Button>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => requestDelete(Array.from(selectedIds))}
-            disabled={selectedCount === 0}
+            onClick={() => onPublish?.(publishableIds)}
+            disabled={publishableIds.length === 0 || publishing}
+          >
+            <Globe size={16} />
+            公开{publishableIds.length > 0 ? ` (${publishableIds.length})` : ""}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onUnpublish?.(unpublishableIds)}
+            disabled={unpublishableIds.length === 0 || publishing}
+          >
+            <Lock size={16} />
+            取消公开
+            {unpublishableIds.length > 0 ? ` (${unpublishableIds.length})` : ""}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => requestDelete(ownedSelectedIds)}
+            disabled={ownedSelectedIds.length === 0}
           >
             <Trash2 size={16} />
             删除选中
@@ -653,7 +767,8 @@ export function KnowledgeDataTable({
 
       {/* 数据表 */}
       <div className="flex-1 overflow-auto rounded-md border">
-        <Table>
+        {/* 固定表格布局：其余列定宽，剩余宽度全部留给文件名列 */}
+        <Table className="table-fixed">
           <TableHeader className="bg-muted/50 sticky top-0 z-10">
             <TableRow>
               <TableHead className="w-10">
@@ -669,10 +784,11 @@ export function KnowledgeDataTable({
                   aria-label="全选当前页"
                 />
               </TableHead>
-              <TableHead>文件名</TableHead>
-              <TableHead className="w-40">标签</TableHead>
-              <TableHead className="w-44">上传日期</TableHead>
-              <TableHead className="w-32">是否完成编码</TableHead>
+              <TableHead className="min-w-40">文件名</TableHead>
+              <TableHead className="w-24 whitespace-nowrap">来源</TableHead>
+              <TableHead className="w-28 whitespace-nowrap">标签</TableHead>
+              <TableHead className="w-36 whitespace-nowrap">上传日期</TableHead>
+              <TableHead className="w-24 whitespace-nowrap">编码状态</TableHead>
               <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
@@ -680,7 +796,7 @@ export function KnowledgeDataTable({
             {loading ? (
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={7}
                   className="text-muted-foreground h-24 text-center"
                 >
                   加载中...
@@ -689,7 +805,7 @@ export function KnowledgeDataTable({
             ) : pagedData.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={7}
                   className="text-muted-foreground h-24 text-center"
                 >
                   暂无数据
@@ -698,6 +814,8 @@ export function KnowledgeDataTable({
             ) : (
               pagedData.map((item) => {
                 const checked = selectedIds.has(item.file_id)
+                const isPublic = !!item.is_public
+                const canUnpublish = canUnpublishFile(item)
                 return (
                   <TableRow
                     key={item.file_id}
@@ -706,6 +824,7 @@ export function KnowledgeDataTable({
                     <TableCell>
                       <Checkbox
                         checked={checked}
+                        disabled={!isSelectable(item)}
                         onCheckedChange={(value) =>
                           toggleRow(item.file_id, !!value)
                         }
@@ -713,15 +832,31 @@ export function KnowledgeDataTable({
                       />
                     </TableCell>
                     <TableCell
-                      className="max-w-0 truncate font-medium"
+                      className="truncate font-medium"
                       title={item.filename}
                     >
                       {item.filename}
                     </TableCell>
                     <TableCell>
+                      {isPublic ? (
+                        <Badge variant="outline" className="max-w-full gap-1">
+                          <Globe size={12} className="shrink-0" />
+                          <span className="truncate" title={item.source}>
+                            {item.source ?? "公共"}
+                          </span>
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">
+                          私人
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell>
                       <TagCell tags={item.tags} />
                     </TableCell>
-                    <TableCell>{formatDate(item.create_time)}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {formatDate(item.create_time)}
+                    </TableCell>
                     <TableCell>
                       {item.is_embedded ? (
                         <Badge>已编码</Badge>
@@ -742,27 +877,52 @@ export function KnowledgeDataTable({
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            disabled={item.is_embedded || embedding}
-                            onClick={() => onEmbed?.([item.file_id])}
-                          >
-                            <CodeXml size={16} />
-                            编码
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => setTagTargetId(item.file_id)}
-                          >
-                            <TagIcon size={16} />
-                            添加标签
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={() => requestDelete([item.file_id])}
-                          >
-                            <Trash2 size={16} />
-                            删除
-                          </DropdownMenuItem>
+                          {!isPublic && (
+                            <>
+                              <DropdownMenuItem
+                                disabled={item.is_embedded || embedding}
+                                onClick={() => onEmbed?.([item.file_id])}
+                              >
+                                <CodeXml size={16} />
+                                编码
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => setTagTargetId(item.file_id)}
+                              >
+                                <TagIcon size={16} />
+                                添加标签
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                disabled={!item.is_embedded || publishing}
+                                onClick={() => onPublish?.([item.file_id])}
+                              >
+                                <Globe size={16} />
+                                公开
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onClick={() => requestDelete([item.file_id])}
+                              >
+                                <Trash2 size={16} />
+                                删除
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          {isPublic && canUnpublish && (
+                            <DropdownMenuItem
+                              disabled={publishing}
+                              onClick={() => onUnpublish?.([item.file_id])}
+                            >
+                              <Lock size={16} />
+                              取消公开
+                            </DropdownMenuItem>
+                          )}
+                          {isPublic && !canUnpublish && (
+                            <DropdownMenuItem disabled>
+                              公共文件仅可查看与检索
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>

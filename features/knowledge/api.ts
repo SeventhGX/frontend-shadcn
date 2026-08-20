@@ -20,6 +20,10 @@ export interface KnowledgeFile {
   file_type: string
   is_embedded: boolean
   create_time?: string
+  /** 文件来源用户的 user_name；公共文件为原发布者 */
+  source?: string
+  /** 是否属于公共知识库 */
+  is_public?: boolean
   tags?: KnowledgeTag[]
 }
 
@@ -295,6 +299,52 @@ export interface DeleteResult {
 export async function deleteKnowledgeFiles(fileIds: string[]): Promise<ApiResponse<DeleteResult>> {
   return fetcher(
     `/knowledge/v1/delete_files`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ file_ids: fileIds }),
+    }
+  )
+}
+
+/** 公开 / 取消公开的返回结果 */
+export interface KnowledgeVisibilityResult {
+  file_ids: string[]
+  count: number
+}
+
+/**
+ * 将当前用户已完成编码的文件公开到公共知识库
+ * 批量操作具有原子性：任一文件不满足条件时整批都不会公开。
+ * @param fileIds 需要公开的文件 file_id 列表
+ */
+export async function publishKnowledgeFiles(
+  fileIds: string[]
+): Promise<ApiResponse<KnowledgeVisibilityResult>> {
+  return fetcher(
+    `/knowledge/v1/publish_files`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ file_ids: fileIds }),
+    }
+  )
+}
+
+/**
+ * 取消公开：仅原发布者可以把公共文件转回个人知识文件
+ * 不会删除文件或切片，也不需要重新编码。
+ * @param fileIds 需要取消公开的文件 file_id 列表
+ */
+export async function unpublishKnowledgeFiles(
+  fileIds: string[]
+): Promise<ApiResponse<KnowledgeVisibilityResult>> {
+  return fetcher(
+    `/knowledge/v1/unpublish_files`,
     {
       method: 'POST',
       headers: {

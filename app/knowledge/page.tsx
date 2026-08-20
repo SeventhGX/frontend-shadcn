@@ -4,6 +4,7 @@ import * as React from "react"
 import { toast } from "sonner"
 
 import { AuthGuard } from "@/components/common/auth-guard"
+import { useAuth } from "@/app/providers"
 import {
   ResizableHandle,
   ResizablePanel,
@@ -15,7 +16,9 @@ import {
   embedKnowledgeFiles,
   getAllKnowledgeFiles,
   getKnowledgeTags,
+  publishKnowledgeFiles,
   setKnowledgeTags,
+  unpublishKnowledgeFiles,
   uploadKnowledgeFile,
   type KnowledgeFile,
   type KnowledgeTag,
@@ -28,11 +31,13 @@ const AUTO_TAG_POLL_INTERVAL_MS = 5000
 const AUTO_TAG_POLL_MAX_ATTEMPTS = 60
 
 export default function KnowledgePage() {
+  const { user } = useAuth()
   const [files, setFiles] = React.useState<KnowledgeFile[]>([])
   const [tags, setTags] = React.useState<KnowledgeTag[]>([])
   const [loading, setLoading] = React.useState(false)
   const [uploading, setUploading] = React.useState(false)
   const [embedding, setEmbedding] = React.useState(false)
+  const [publishing, setPublishing] = React.useState(false)
 
   const fetchFiles = React.useCallback(async (silent = false) => {
     try {
@@ -137,6 +142,36 @@ export default function KnowledgePage() {
     }
   }
 
+  const handlePublish = async (fileIds: string[]) => {
+    if (fileIds.length === 0) return
+    try {
+      setPublishing(true)
+      const res = await publishKnowledgeFiles(fileIds)
+      toast.success(`已公开 ${res?.data?.count ?? fileIds.length} 个文件`)
+      await fetchFiles()
+    } catch (error) {
+      console.error(error)
+      toast.error("公开失败，请确认所选文件均已完成编码")
+    } finally {
+      setPublishing(false)
+    }
+  }
+
+  const handleUnpublish = async (fileIds: string[]) => {
+    if (fileIds.length === 0) return
+    try {
+      setPublishing(true)
+      const res = await unpublishKnowledgeFiles(fileIds)
+      toast.success(`已取消公开 ${res?.data?.count ?? fileIds.length} 个文件`)
+      await fetchFiles()
+    } catch (error) {
+      console.error(error)
+      toast.error("取消公开失败，仅原发布者可以取消公开")
+    } finally {
+      setPublishing(false)
+    }
+  }
+
   const handleSaveTags = async (
     fileId: string,
     tagIds: string[],
@@ -217,13 +252,17 @@ export default function KnowledgePage() {
                 <KnowledgeDataTable
                   data={files}
                   tags={tags}
+                  currentUserName={user?.user_name}
                   loading={loading}
                   uploading={uploading}
                   embedding={embedding}
+                  publishing={publishing}
                   onRefresh={() => fetchFiles()}
                   onUpload={handleUpload}
                   onEmbed={handleEmbed}
                   onDelete={handleDelete}
+                  onPublish={handlePublish}
+                  onUnpublish={handleUnpublish}
                   onSaveTags={handleSaveTags}
                   onAutoTag={handleAutoTag}
                 />
