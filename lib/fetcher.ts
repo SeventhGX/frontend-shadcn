@@ -1,5 +1,18 @@
 import { getToken } from './auth'
 
+/** 携带 HTTP 状态码与响应体的 API 错误，便于调用方区分 409 等业务冲突 */
+export class ApiError extends Error {
+  status: number
+  data: unknown
+
+  constructor(message: string, status: number, data: unknown) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.data = data
+  }
+}
+
 /**
  * 获取 API 基础 URL
  * 根据运行环境（浏览器端 vs 服务器端）返回不同的 API 地址
@@ -65,14 +78,17 @@ export async function fetcher(
   )
 
   if (!res.ok) {
+    const errorBody = await res.text().catch(() => '')
+    let parsed: unknown = errorBody
+    try {
+      parsed = errorBody ? JSON.parse(errorBody) : ''
+    } catch {}
+
     // 如果返回 401，表示未授权，可能需要重新登录
     if (res.status === 401) {
-      // 可以在这里触发全局的登录跳转
-      // 或者抛出特定的错误让调用方处理
-      throw new Error('Unauthorized')
-      // useRouter().push(`/login`)
+      throw new ApiError('Unauthorized', res.status, parsed)
     }
-    throw new Error('API Error')
+    throw new ApiError('API Error', res.status, parsed)
   }
 
   // 检查 Content-Type 判断响应形态

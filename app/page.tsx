@@ -21,11 +21,12 @@ import {
   FileText,
   Wrench,
   Plus,
+  Hammer,
 } from "lucide-react"
 
 type IconType = ComponentType<{ size?: number; className?: string }>
 
-type FeatureCategory = "ai" | "content" | "tools"
+type FeatureCategory = "ai" | "content" | "tools" | "prototype"
 
 type Feature = {
   href: string
@@ -40,6 +41,7 @@ const categoryMeta: { id: "all" | FeatureCategory; label: string; icon: IconType
   { id: "ai", label: "AI 助手", icon: Bot },
   { id: "content", label: "内容中心", icon: FileText },
   { id: "tools", label: "实用工具", icon: Wrench },
+  { id: "prototype", label: "功能原型", icon: Hammer },
 ]
 
 const features: Feature[] = [
@@ -92,6 +94,13 @@ const features: Feature[] = [
     icon: FlaskConical,
     category: "tools",
   },
+  {
+    href: "/knowledge-prototype",
+    title: "知识库原型",
+    description: "知识库系统功能原型。",
+    icon: Database,
+    category: "prototype",
+  }
 ]
 
 const categoryLabel = (c: FeatureCategory) =>
