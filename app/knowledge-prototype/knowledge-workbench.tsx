@@ -5,7 +5,6 @@ import { toast } from "sonner"
 import {
   ChevronLeft,
   ChevronRight,
-  CircleAlert,
   Download,
   FileText,
   LoaderCircle,
@@ -39,7 +38,6 @@ import {
   type MetadataOption,
   type UploadFileParams,
 } from "@/features/knowledge-v2/api"
-import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -66,6 +64,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { FileUploadForm } from "./file-upload-form"
 
 const PAGE_SIZE = 20
@@ -86,6 +89,42 @@ async function saveBlob(blob: Blob, name: string) {
   a.click()
   document.body.removeChild(a)
   setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+/** 标签单元格：默认折叠展示，悬浮后展开全部标签 */
+function TagCell({ tags }: { tags?: KnowledgeTagV2[] }) {
+  if (!tags || tags.length === 0) {
+    return <span className="text-muted-foreground text-xs">-</span>
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="flex w-fit max-w-full cursor-default items-center gap-1">
+          <Badge variant="secondary" className="min-w-0 truncate">
+            {tags[0].name}
+          </Badge>
+          {tags.length > 1 && (
+            <Badge variant="outline" className="shrink-0">
+              +{tags.length - 1}
+            </Badge>
+          )}
+        </div>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-72">
+        <div className="flex flex-wrap gap-1">
+          {tags.map((tag) => (
+            <span
+              key={tag.id}
+              className="bg-background/20 rounded px-1.5 py-0.5"
+            >
+              {tag.name}
+            </span>
+          ))}
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  )
 }
 
 /** 管理文件的行操作确认对话框 */
@@ -138,11 +177,11 @@ export function KnowledgeWorkbench() {
     []
   )
   const [requirementsLoading, setRequirementsLoading] = React.useState(false)
-  const [selectedRequirement, setSelectedRequirement] =
-    React.useState<KnowledgeRequirement | null>(null)
 
   // 上传
   const [uploadSubmitting, setUploadSubmitting] = React.useState(false)
+  const [uploadDialogOpen, setUploadDialogOpen] = React.useState(false)
+  const [uploadTarget, setUploadTarget] = React.useState<KnowledgeRequirement | null>(null)
 
   // 我的文件
   const [myFiles, setMyFiles] = React.useState<KnowledgeFileV2[]>([])
@@ -230,7 +269,8 @@ export function KnowledgeWorkbench() {
       setUploadSubmitting(true)
       await uploadFileV2(params)
       toast.success("上传成功，文件已完成切片与编码")
-      setSelectedRequirement(null)
+      setUploadDialogOpen(false)
+      setUploadTarget(null)
       loadRequirements()
       loadMyFiles(1, filenameQuery)
     } catch (error) {
@@ -243,6 +283,11 @@ export function KnowledgeWorkbench() {
     } finally {
       setUploadSubmitting(false)
     }
+  }
+
+  const openUploadDialog = (req: KnowledgeRequirement | null) => {
+    setUploadTarget(req)
+    setUploadDialogOpen(true)
   }
 
   const handleEditSubmit = async (params: UploadFileParams) => {
@@ -329,67 +374,55 @@ export function KnowledgeWorkbench() {
         {/* 上传 */}
         <TabsContent
           value="upload"
-        className="mt-0 flex min-h-0 flex-1 flex-col gap-4 overflow-hidden"
-      >
-        {/* 缺口表格 */}
-        <div className="flex flex-col gap-2 overflow-hidden">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-medium">知识库缺口</p>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={requirementsLoading}
-              onClick={loadRequirements}
-            >
-              <RefreshCw
-                size={13}
-                className={requirementsLoading ? "animate-spin" : ""}
-              />
-              刷新
-            </Button>
-          </div>
-          {requirementsLoading ? (
-            <div className="text-muted-foreground flex items-center justify-center gap-2 py-10 text-sm">
-              <LoaderCircle size={16} className="animate-spin" />
-              加载中...
+          className="mt-0 flex min-h-0 flex-1 flex-col gap-4 overflow-hidden"
+        >
+          {/* 缺口表格 */}
+          <div className="flex flex-col gap-2 overflow-hidden">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium">知识库缺口</p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={requirementsLoading}
+                  onClick={loadRequirements}
+                >
+                  <RefreshCw
+                    size={13}
+                    className={requirementsLoading ? "animate-spin" : ""}
+                  />
+                  刷新
+                </Button>
+                <Button size="sm" onClick={() => openUploadDialog(null)}>
+                  <Upload size={13} />
+                  上传文件
+                </Button>
+              </div>
             </div>
-          ) : requirements.length === 0 ? (
-            <p className="text-muted-foreground rounded-md border border-dashed p-6 text-center text-sm">
-              暂无开放的知识库缺口
-            </p>
-          ) : (
-            <div className="min-h-0 max-h-56 overflow-y-auto rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-10">
-                      <span className="sr-only">选择</span>
-                    </TableHead>
-                    <TableHead>缺口描述</TableHead>
-                    <TableHead className="w-20">状态</TableHead>
-                    <TableHead className="w-20">已关联</TableHead>
-                    <TableHead className="w-24">创建时间</TableHead>
-                    <TableHead className="w-16 text-right">操作</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {requirements.map((req) => {
-                    const selected = selectedRequirement?.id === req.id
-                    return (
-                      <TableRow
-                        key={req.id}
-                        className={cn(selected && "bg-muted/50")}
-                      >
-                        <TableCell>
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={() =>
-                              setSelectedRequirement(selected ? null : req)
-                            }
-                            aria-label={`选择缺口：${req.requirement || req.question}`}
-                          />
-                        </TableCell>
+            {requirementsLoading ? (
+              <div className="text-muted-foreground flex items-center justify-center gap-2 py-10 text-sm">
+                <LoaderCircle size={16} className="animate-spin" />
+                加载中...
+              </div>
+            ) : requirements.length === 0 ? (
+              <p className="text-muted-foreground rounded-md border border-dashed p-6 text-center text-sm">
+                暂无开放的知识库缺口，可点击右上角直接上传文件
+              </p>
+            ) : (
+              <div className="min-h-0 flex-1 overflow-y-auto rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>缺口描述</TableHead>
+                      <TableHead className="w-20">状态</TableHead>
+                      <TableHead className="w-20">已关联</TableHead>
+                      <TableHead className="w-24">创建时间</TableHead>
+                      <TableHead className="w-16 text-right">操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {requirements.map((req) => (
+                      <TableRow key={req.id}>
                         <TableCell>
                           <p className="line-clamp-1 text-xs font-medium">
                             {req.requirement || req.question || "（未描述）"}
@@ -420,61 +453,20 @@ export function KnowledgeWorkbench() {
                             variant="outline"
                             size="sm"
                             disabled={req.status !== "open"}
-                            onClick={() => setSelectedRequirement(req)}
+                            onClick={() => openUploadDialog(req)}
                           >
                             <Upload size={13} />
                             上传
                           </Button>
                         </TableCell>
                       </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </div>
-
-        {/* 上传表单 */}
-        <div className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-2xl">
-            {selectedRequirement && (
-              <div className="bg-muted/50 mb-3 flex items-start gap-2 rounded-md border px-3 py-2">
-                <CircleAlert
-                  size={14}
-                  className="text-muted-foreground mt-0.5 shrink-0"
-                />
-                <div className="min-w-0">
-                  <p className="text-xs font-medium">
-                    当前关联缺口：{selectedRequirement.requirement || selectedRequirement.question}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedRequirement(null)}
-                    className="text-muted-foreground hover:text-foreground mt-0.5 text-xs underline"
-                  >
-                    取消关联，直接上传
-                  </button>
-                </div>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             )}
-            <FileUploadForm
-              databases={databases}
-              metadataOptions={metadataOptions}
-              tags={tags}
-              requirements={requirements}
-              initialRequirementIds={
-                selectedRequirement ? [selectedRequirement.id] : []
-              }
-              submitting={uploadSubmitting}
-              onSubmit={handleUpload}
-              submitLabel={
-                selectedRequirement ? "上传并关联缺口" : "上传文件"
-              }
-            />
           </div>
-        </div>
-      </TabsContent>
+        </TabsContent>
 
         {/* 我的文件 */}
         <TabsContent
@@ -535,10 +527,10 @@ export function KnowledgeWorkbench() {
                   <TableRow>
                     <TableHead>文件名</TableHead>
                     <TableHead className="w-28">分库</TableHead>
-                    <TableHead className="w-24">标签</TableHead>
+                    <TableHead className="w-50">标签</TableHead>
                     <TableHead className="w-24">大小</TableHead>
                     <TableHead className="w-24">上传时间</TableHead>
-                    <TableHead className="w-32 text-right">操作</TableHead>
+                    <TableHead className="w-36 text-right">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -596,7 +588,8 @@ export function KnowledgeWorkbench() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-wrap gap-0.5">
+                        <TagCell tags={file.tags} />
+                        {/* <div className="flex flex-wrap gap-0.5">
                           {file.tags?.slice(0, 2).map((tag) => (
                             <Badge
                               key={tag.id}
@@ -614,10 +607,10 @@ export function KnowledgeWorkbench() {
                               +{file.tags!.length - 2}
                             </Badge>
                           )}
-                        </div>
+                        </div> */}
                       </TableCell>
                       <TableCell className="text-muted-foreground text-xs">
-                        {file.file_type}
+                        {file.file_size ? `${(file.file_size / 1024).toFixed(2)} KB` : "-"}
                       </TableCell>
                       <TableCell className="text-muted-foreground text-xs">
                         {formatTime(file.create_time)}
@@ -717,6 +710,31 @@ export function KnowledgeWorkbench() {
         </TabsContent>
       </Tabs>
 
+      {/* 上传文件弹窗 */}
+      <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {uploadTarget ? "上传并关联缺口" : "上传文件"}
+            </DialogTitle>
+            <DialogDescription>
+              {uploadTarget
+                ? `将文件关联到缺口：${uploadTarget.requirement || uploadTarget.question}`
+                : "上传文件到公开知识库，支持多选分库与标签。"}
+            </DialogDescription>
+          </DialogHeader>
+          <FileUploadForm
+            databases={databases}
+            metadataOptions={metadataOptions}
+            tags={tags}
+            initialRequirementIds={uploadTarget ? [uploadTarget.id] : []}
+            submitting={uploadSubmitting}
+            onSubmit={handleUpload}
+            submitLabel={uploadTarget ? "上传并关联缺口" : "上传文件"}
+          />
+        </DialogContent>
+      </Dialog>
+
       {/* 编辑文件对话框 */}
       <Dialog open={!!editFile} onOpenChange={(open) => !open && setEditFile(null)}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
@@ -730,7 +748,6 @@ export function KnowledgeWorkbench() {
             databases={databases}
             metadataOptions={metadataOptions}
             tags={tags}
-            requirements={requirements}
             initialRequirementIds={editFile?.requirement_ids ?? []}
             submitting={editSubmitting}
             onSubmit={handleEditSubmit}

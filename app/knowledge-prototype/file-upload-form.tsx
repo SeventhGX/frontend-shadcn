@@ -43,7 +43,6 @@ export function FileUploadForm({
   databases,
   metadataOptions,
   tags,
-  requirements,
   initialRequirementIds,
   submitting,
   onSubmit,
@@ -52,12 +51,6 @@ export function FileUploadForm({
   databases: KnowledgeDatabase[]
   metadataOptions: MetadataOption[]
   tags: KnowledgeTagV2[]
-  /** 开放的缺口请求（用于选择关联） */
-  requirements: Array<{
-    id: string
-    requirement?: string | null
-    question?: string | null
-  }>
   initialRequirementIds?: string[]
   submitting?: boolean
   onSubmit: (params: UploadFileParams) => void
@@ -68,13 +61,7 @@ export function FileUploadForm({
   const [metadata, setMetadata] = React.useState<Record<string, string>>({})
   const [tagNames, setTagNames] = React.useState<string[]>([])
   const [newTagInput, setNewTagInput] = React.useState("")
-  const [requirementIds, setRequirementIds] = React.useState<string[]>(
-    initialRequirementIds ?? []
-  )
-
-  React.useEffect(() => {
-    setRequirementIds(initialRequirementIds ?? [])
-  }, [initialRequirementIds])
+  const requirementIds = initialRequirementIds ?? []
 
   // 所选分库模板的并集
   const templateFields = React.useMemo(() => {
@@ -278,45 +265,6 @@ export function FileUploadForm({
           </button>
         </div>
       </Section>
-
-      {/* {requirements.length > 0 && (
-        <Section title="关联知识库缺口" desc="可选，上传后文件将自动关联到所选缺口">
-          <div className="max-h-32 space-y-1.5 overflow-y-auto">
-            {requirements.map((req) => {
-              const active = requirementIds.includes(req.id)
-              return (
-                <label
-                  key={req.id}
-                  className="hover:bg-accent/50 flex cursor-pointer items-start gap-2 rounded-md border px-3 py-2 transition-colors"
-                >
-                  <input
-                    type="checkbox"
-                    checked={active}
-                    onChange={(e) =>
-                      setRequirementIds((prev) =>
-                        e.target.checked
-                          ? [...prev, req.id]
-                          : prev.filter((id) => id !== req.id)
-                      )
-                    }
-                    className="mt-0.5"
-                  />
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium">
-                      {req.requirement || req.question || "（未描述）"}
-                    </span>
-                    {req.requirement && req.question && (
-                      <span className="text-muted-foreground block truncate text-xs">
-                        {req.question}
-                      </span>
-                    )}
-                  </span>
-                </label>
-              )
-            })}
-          </div>
-        </Section>
-      )} */}
 
       <button
         type="button"
