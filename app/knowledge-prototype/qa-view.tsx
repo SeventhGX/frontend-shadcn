@@ -531,8 +531,10 @@ export function KnowledgeQaView() {
                       aria-pressed={active}
                       onClick={() => handleFeedback(turn, option.value)}
                       className={cn(
-                        "hover:bg-accent rounded p-1.5 transition-colors",
-                        active ? "text-foreground" : "text-muted-foreground"
+                        "rounded p-1.5 transition-colors",
+                        active
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "text-muted-foreground hover:bg-accent hover:text-foreground"
                       )}
                     >
                       <Icon size={14} />
