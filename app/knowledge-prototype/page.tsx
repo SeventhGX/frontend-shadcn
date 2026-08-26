@@ -12,6 +12,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { KnowledgeQaView } from "./qa-view"
+import { KnowledgeOverview } from "./knowledge-overview"
+import { KnowledgeWorkbench } from "./knowledge-workbench"
 
 type ModuleId = "qa" | "overview" | "workbench"
 
@@ -41,15 +43,6 @@ const MODULES: Array<{
   },
 ]
 
-function ComingSoon({ title, desc }: { title: string; desc: string }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-      <p className="text-lg font-semibold">{title}</p>
-      <p className="text-muted-foreground max-w-sm text-sm">{desc}</p>
-      <p className="text-muted-foreground/70 mt-2 text-xs">该模块尚未实现</p>
-    </div>
-  )
-}
 
 export default function KnowledgePrototypePage() {
   const [active, setActive] = React.useState<ModuleId>("qa")
@@ -125,18 +118,8 @@ export default function KnowledgePrototypePage() {
 
           <section className="min-w-0 flex-1 overflow-hidden">
             {active === "qa" && <KnowledgeQaView />}
-            {active === "overview" && (
-              <ComingSoon
-                title="知识库总览"
-                desc="用于浏览公开分库、元数据模板与已入库文件。"
-              />
-            )}
-            {active === "workbench" && (
-              <ComingSoon
-                title="工作台"
-                desc="用于上传、重传、删除本人知识文件，并处理知识库缺口。"
-              />
-            )}
+            {active === "overview" && <KnowledgeOverview />}
+            {active === "workbench" && <KnowledgeWorkbench />}
           </section>
         </div>
       </TooltipProvider>

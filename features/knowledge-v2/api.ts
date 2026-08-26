@@ -27,6 +27,12 @@ export interface KnowledgeDatabase {
   database_desc?: string | null
   /** 该分库允许的元数据字段名列表 */
   meta_data_template?: string[] | null
+  /** 该分库 active 文件数 */
+  file_count?: number
+  /** 该分库 active 文件的 chunk 总数 */
+  total_chunk_count?: number
+  /** 最新文件创建时间；没有文件时为 null */
+  latest_upload_time?: string | null
 }
 
 /** 全局元数据选项 */
@@ -60,13 +66,22 @@ export interface KnowledgeTagV2 {
 
 /** V2 知识文件 */
 export interface KnowledgeFileV2 {
-  knowledge_id: string
+  id: string
+  /** 兼容旧字段，等同于 id */
+  knowledge_id?: string
   filename: string
   file_type: string
+  /** 字节数 */
+  file_size?: number
+  md5?: string
   meta_data?: Record<string, string> | null
+  is_embedded?: boolean
+  create_time?: string
+  uploader?: string
   databases?: KnowledgeDatabase[]
   tags?: KnowledgeTagV2[]
-  create_time?: string
+  /** 当前关联的缺口 ID 列表 */
+  requirement_ids?: string[]
 }
 
 /** 获取全部公开标签 */
@@ -111,6 +126,120 @@ export async function getMyFilesV2(params?: {
   return fetcher(`/knowledge/v2/files/mine?${search.toString()}`, {
     method: "GET",
   })
+}
+
+/** 上传文件请求参数 */
+export interface UploadFileParams {
+  file: File
+  databaseNames: string[]
+  /** 元数据键值对，字段须属于所选分库模板的并集 */
+  metadata?: Record<string, string>
+  /** 公开标签名称（已存在则复用） */
+  tagNames?: string[]
+  /** 关联的开放知识库缺口 ID */
+  requirementIds?: string[]
+}
+
+/** 上传知识文件，成功后立即完成切片与 embedding */
+export async function uploadFileV2(
+  params: UploadFileParams
+): Promise<ApiResponse<KnowledgeFileV2>> {
+  const formData = new FormData()
+  formData.append("file", params.file)
+  params.databaseNames.forEach((name) => formData.append("database_names", name))
+  if (params.metadata && Object.keys(params.metadata).length > 0) {
+    formData.append("metadata_json", JSON.stringify(params.metadata))
+  }
+  params.tagNames?.forEach((name) => formData.append("tag_names", name))
+  params.requirementIds?.forEach((id) => formData.append("requirement_ids", id))
+
+  return fetcher(`/knowledge/v2/files`, { method: "POST", body: formData })
+}
+
+/** 重传文件内容（仅原上传者）；元数据/分库/标签整体替换 */
+export async function replaceFileContentV2(
+  knowledgeId: string,
+  params: Omit<UploadFileParams, "requirementIds"> & {
+    /** 仅追加缺口关联 */
+    requirementIds?: string[]
+  }
+): Promise<ApiResponse<KnowledgeFileV2>> {
+  const formData = new FormData()
+  formData.append("file", params.file)
+  params.databaseNames.forEach((name) => formData.append("database_names", name))
+  formData.append("metadata_json", JSON.stringify(params.metadata ?? {}))
+  params.tagNames?.forEach((name) => formData.append("tag_names", name))
+  params.requirementIds?.forEach((id) => formData.append("requirement_ids", id))
+
+  return fetcher(`/knowledge/v2/files/${knowledgeId}/content`, {
+    method: "PUT",
+    body: formData,
+  })
+}
+
+/** 下载 active 文件，返回二进制 Response */
+export async function downloadFileV2(knowledgeId: string): Promise<Response> {
+  return fetcher(`/knowledge/v2/files/${knowledgeId}/download`, {
+    method: "GET",
+  })
+}
+
+/** 删除成功响应 */
+export interface DeleteFileResultV2 {
+  id: string
+  deleted: boolean
+}
+
+/** 删除本人上传的文件 */
+export async function deleteFileV2(
+  knowledgeId: string
+): Promise<ApiResponse<DeleteFileResultV2>> {
+  return fetcher(`/knowledge/v2/files/${knowledgeId}`, { method: "DELETE" })
+}
+
+/** 强制重建本人文件的 chunk 与向量 */
+export async function embedFilesV2(
+  knowledgeIds: string[]
+): Promise<ApiResponse<unknown>> {
+  return fetcher(`/knowledge/v2/embedding_files`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ knowledge_ids: knowledgeIds }),
+  })
+}
+
+/** 设置本人文件的公开标签 */
+export async function setFileTagsV2(params: {
+  knowledge_id: string
+  tag_ids?: string[]
+  new_tags?: string[]
+}): Promise<ApiResponse<KnowledgeTagV2[]>> {
+  return fetcher(`/knowledge/v2/set_tags`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  })
+}
+
+/** AI 自动打标（在原有标签基础上追加） */
+export async function autoTagV2(params: {
+  knowledge_id: string
+  allow_new_tags?: boolean
+}): Promise<ApiResponse<KnowledgeTagV2[]>> {
+  return fetcher(`/knowledge/v2/auto_tag`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      knowledge_id: params.knowledge_id,
+      allow_new_tags: params.allow_new_tags ?? true,
+    }),
+    signal: AbortSignal.timeout(180_000),
+  })
+}
+
+/** 从 409 响应中识别 MD5 重复冲突 */
+export function isDuplicateFileError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 409
 }
 
 /* ------------------------------------------------------------------ */
@@ -372,11 +501,16 @@ export interface KnowledgeRequirement {
   id: string
   owner_user_id: string
   owner_name?: string
+  /** 当前登录用户是否为该缺口的创建者 */
+  is_owner?: boolean
   requirement?: string | null
+  /** 关联的原问题日志 */
+  related_log_id?: string
   question?: string | null
   status: RequirementStatus
   is_resolved: boolean
-  file_ids?: string[]
+  /** 关联的文件 ID 列表 */
+  related_knowledgev2_ids?: string[]
   create_time?: string
 }
 
