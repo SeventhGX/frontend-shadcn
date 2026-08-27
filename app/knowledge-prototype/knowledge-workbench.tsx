@@ -745,10 +745,16 @@ export function KnowledgeWorkbench() {
             </DialogDescription>
           </DialogHeader>
           <FileUploadForm
+            key={editFile?.id}
             databases={databases}
             metadataOptions={metadataOptions}
             tags={tags}
             initialRequirementIds={editFile?.requirement_ids ?? []}
+            initialDatabaseNames={
+              editFile?.databases?.map((db) => db.database_name) ?? []
+            }
+            initialMetadata={editFile?.meta_data ?? {}}
+            initialTagNames={editFile?.tags?.map((tag) => tag.name) ?? []}
             submitting={editSubmitting}
             onSubmit={handleEditSubmit}
             submitLabel="确认更新"

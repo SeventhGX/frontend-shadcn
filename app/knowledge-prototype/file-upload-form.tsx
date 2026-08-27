@@ -44,6 +44,9 @@ export function FileUploadForm({
   metadataOptions,
   tags,
   initialRequirementIds,
+  initialDatabaseNames,
+  initialMetadata,
+  initialTagNames,
   submitting,
   onSubmit,
   submitLabel,
@@ -52,14 +55,23 @@ export function FileUploadForm({
   metadataOptions: MetadataOption[]
   tags: KnowledgeTagV2[]
   initialRequirementIds?: string[]
+  initialDatabaseNames?: string[]
+  initialMetadata?: Record<string, string> | null
+  initialTagNames?: string[]
   submitting?: boolean
   onSubmit: (params: UploadFileParams) => void
   submitLabel: string
 }) {
   const [file, setFile] = React.useState<File | null>(null)
-  const [dbNames, setDbNames] = React.useState<string[]>([])
-  const [metadata, setMetadata] = React.useState<Record<string, string>>({})
-  const [tagNames, setTagNames] = React.useState<string[]>([])
+  const [dbNames, setDbNames] = React.useState<string[]>(
+    () => initialDatabaseNames ?? []
+  )
+  const [metadata, setMetadata] = React.useState<Record<string, string>>(
+    () => initialMetadata ?? {}
+  )
+  const [tagNames, setTagNames] = React.useState<string[]>(
+    () => initialTagNames ?? []
+  )
   const [newTagInput, setNewTagInput] = React.useState("")
   const requirementIds = initialRequirementIds ?? []
 
