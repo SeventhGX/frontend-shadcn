@@ -18,8 +18,11 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     if (isLoading) return
 
     // 如果未登录且不在登录页，跳转到登录页
+    // pathname 不含查询字符串（如分享链接的 ?code=xxx），需从 window.location 补上，
+    // 否则登录后跳回会丢失查询参数
     if (!isAuthenticated && pathname && !pathname.startsWith('/login')) {
-      router.push(`/login?redirect=${encodeURIComponent(pathname)}`)
+      const search = typeof window !== 'undefined' ? window.location.search : ''
+      router.push(`/login?redirect=${encodeURIComponent(pathname + search)}`)
     }
   }, [isAuthenticated, isLoading, pathname, router])
 
