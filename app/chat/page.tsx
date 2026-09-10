@@ -7,6 +7,8 @@ import {
   Trash2,
   Download,
   LoaderCircle,
+  Share2,
+  Users,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -25,11 +27,17 @@ import {
 import { AuthGuard } from "@/components/common/auth-guard"
 import { Message, type ChatMessage, type ChatImageItem } from "@/components/common/message"
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
   ImageAttachments,
   type ImageAttachmentsHandle,
 } from "@/components/common/image-attachments"
 import { HistorySessionSidebar } from "./history-session-sidebar"
 import { ModelParamsPanel } from "./model-params-panel"
+import { ShareSessionDialog } from "./share-session-dialog"
 import {
   chatByStream,
   generateImage,
@@ -48,6 +56,7 @@ import {
   type ModelItem,
   type ModelKwarg,
   type ChatRequestMessage,
+  type SessionShareOrigin,
 } from "@/features/chat/api"
 
 const IMAGE_REF_PREFIX = "Image-:"
@@ -124,6 +133,9 @@ export default function ChatPage() {
   // 当前会话信息（新建会话时由后端返回 id 与 session_name）
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [currentSessionName, setCurrentSessionName] = useState<string>("")
+  // 当前会话的分享溯源信息：是否为他人分享的副本、我是否分享过该会话
+  const [currentSessionSharedFrom, setCurrentSessionSharedFrom] = useState<SessionShareOrigin | null>(null)
+  const [currentSessionIsSharedByMe, setCurrentSessionIsSharedByMe] = useState(false)
   // 从历史加载的消息数量，用于在其后渲染分隔线，区分历史会话与新内容
   const [historyCount, setHistoryCount] = useState(0)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -142,6 +154,7 @@ export default function ChatPage() {
   const [sessionDetailLoading, setSessionDetailLoading] = useState<string | null>(null) // 正在加载的 sessionId
   const [deleteTarget, setDeleteTarget] = useState<ChatSession | null>(null)
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
+  const [shareDialogOpen, setShareDialogOpen] = useState(false)
 
   // 模型参数设置面板
   const [paramsOpen, setParamsOpen] = useState(true)
@@ -270,6 +283,8 @@ export default function ChatPage() {
       // 同步当前会话 id 与标题
       setCurrentSessionId(session.id)
       setCurrentSessionName(session.session_name || "")
+      setCurrentSessionSharedFrom(detail.data.shared_from ?? null)
+      setCurrentSessionIsSharedByMe(!!detail.data.is_shared_by_me)
       // 同步模型选择（若当前列表包含该模型）
       if (models.some((m) => m.model === detail.model)) {
         setSelectedModel(detail.model)
@@ -318,6 +333,8 @@ export default function ChatPage() {
         setMessages([])
         setCurrentSessionId(null)
         setCurrentSessionName("")
+        setCurrentSessionSharedFrom(null)
+        setCurrentSessionIsSharedByMe(false)
         setHistoryCount(0)
       }
     } catch (error) {
@@ -734,6 +751,8 @@ export default function ChatPage() {
     // 清空对话视为开启新会话
     setCurrentSessionId(null)
     setCurrentSessionName("")
+    setCurrentSessionSharedFrom(null)
+    setCurrentSessionIsSharedByMe(false)
     setHistoryCount(0)
   }
 
@@ -788,6 +807,14 @@ export default function ChatPage() {
             onConfirmDelete={handleDeleteSession}
           />
 
+          <ShareSessionDialog
+            open={shareDialogOpen}
+            onOpenChange={setShareDialogOpen}
+            sessionId={currentSessionId}
+            sessionName={currentSessionName}
+            onShareChange={loadSessions}
+          />
+
           <Bot size={18} />
           <Label className="font-bold">模型</Label>
           <Select
@@ -814,11 +841,48 @@ export default function ChatPage() {
           </Select>
 
           {/* 居中显示当前会话标题 */}
-          <div className="absolute left-1/2 -translate-x-1/2 max-w-[40%] pointer-events-none">
-            <p className="text-sm font-medium truncate text-center" title={currentSessionName}>
+          <div className="absolute left-1/2 -translate-x-1/2 max-w-[40%] flex items-center justify-center gap-1.5">
+            <p className="text-sm font-medium truncate text-center pointer-events-none" title={currentSessionName}>
               {currentSessionName || "新会话"}
             </p>
+            {currentSessionIsSharedByMe && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex items-center shrink-0 text-primary">
+                    <Share2 size={12} />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs">
+                  我分享的会话
+                </TooltipContent>
+              </Tooltip>
+            )}
+            {currentSessionSharedFrom && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex items-center shrink-0 text-muted-foreground">
+                    <Users size={12} />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs">
+                  来自 {currentSessionSharedFrom.shared_by || "未知用户"} 的分享
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
+
+          {messages.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShareDialogOpen(true)}
+              disabled={isStreaming || !currentSessionId}
+              className="ml-auto gap-2"
+            >
+              <Share2 size={14} />
+              分享
+            </Button>
+          )}
 
           {messages.length > 0 && (
             <Button
@@ -826,7 +890,7 @@ export default function ChatPage() {
               size="sm"
               onClick={handleDownloadSession}
               disabled={isStreaming || !currentSessionId || isDownloadingSession}
-              className="ml-auto gap-2"
+              className={cn("gap-2", messages.length === 0 && "ml-auto")}
             >
               {isDownloadingSession ? (
                 <LoaderCircle size={14} className="animate-spin" />

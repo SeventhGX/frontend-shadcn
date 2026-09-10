@@ -116,16 +116,27 @@ export async function editImage(body: ImageEditRequest): Promise<ImageGenerateRe
 
 // ---------- 历史会话相关 ----------
 
+// 分享来源信息（会话为“保存分享”创建的副本时才非空）
+export interface SessionShareOrigin {
+  share_code: string
+  shared_by: string | null
+  origin_session_id: string | null
+}
+
 export interface ChatSession {
   id: string        // 会话唯一 ID
   session_name: string     // 会话标题（如第一条消息摘要）
   create_time: string // 创建时间（ISO 字符串）
+  shared_from: SessionShareOrigin | null // 非空表示该会话是通过“保存分享”创建的副本
+  is_shared_by_me: boolean // 当前用户是否曾为该会话创建过分享（未取消即为 true）
 }
 
 export interface ChatSessionDetail {
   id: string
   model: string
   content: ChatRequestMessage[]
+  shared_from: SessionShareOrigin | null
+  is_shared_by_me: boolean
 }
 
 /**
@@ -295,5 +306,98 @@ export async function downloadSessionWord(sessionId: string): Promise<Response> 
   return fetcher(
     `/ai/v1/session_word_download?session_id=${encodeURIComponent(sessionId)}`,
     { method: 'GET' }
+  )
+}
+
+// ---------- 会话分享相关 ----------
+
+export interface CreateSessionShareRequest {
+  session_id: string
+  expire_days?: number | null
+}
+
+export interface SessionShare {
+  id: string
+  session_id: string
+  session_name: string | null
+  share_code: string
+  create_time: string | null
+  expire_time: string | null
+  visit_count: number
+  is_expired: boolean
+}
+
+export interface SharedSession {
+  share_code: string
+  session_id: string
+  session_name: string | null
+  content: { messages: ChatRequestMessage[] } | null
+  create_time: string | null
+  expire_time: string | null
+  shared_by: string | null
+  is_owner: boolean
+}
+
+export interface SaveSharedSessionRequest {
+  share_code: string
+  session_name?: string | null
+}
+
+/**
+ * 为自己的会话创建分享链接
+ * 已存在未过期分享且不传 expire_days 时会复用原分享码；传入 expire_days 会作废旧分享码并重新生成
+ */
+export async function shareSession(body: CreateSessionShareRequest): Promise<{ data: SessionShare }> {
+  return fetcher(
+    `/ai/v1/share_session`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  )
+}
+
+/**
+ * 获取当前用户创建的分享列表
+ */
+export async function getShareSessions(): Promise<{ data: SessionShare[] }> {
+  return fetcher(
+    `/ai/v1/share_sessions`,
+    { method: 'GET' }
+  )
+}
+
+/**
+ * 取消分享
+ */
+export async function cancelSessionShare(shareCode: string): Promise<{ message: string; code: number }> {
+  return fetcher(
+    `/ai/v1/share_session?share_code=${encodeURIComponent(shareCode)}`,
+    { method: 'DELETE' }
+  )
+}
+
+/**
+ * 通过分享码只读加载会话内容
+ */
+export async function getSharedSession(shareCode: string): Promise<{ data: SharedSession }> {
+  return fetcher(
+    `/ai/v1/shared_session?share_code=${encodeURIComponent(shareCode)}`,
+    { method: 'GET' }
+  )
+}
+
+/**
+ * 把分享的会话保存为自己的会话
+ */
+export async function saveSharedSession(body: SaveSharedSessionRequest): Promise<{ data: SessionData }> {
+  return fetcher(
+    `/ai/v1/save_shared_session`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
   )
 }

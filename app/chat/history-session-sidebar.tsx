@@ -1,6 +1,6 @@
 "use client"
 
-import { Clock, History, LoaderCircle, Trash2 } from "lucide-react"
+import { Clock, History, LoaderCircle, Share2, Trash2, Users } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -96,7 +96,33 @@ export function HistorySessionSidebar({
                             <Clock size={14} className="mt-0.5 shrink-0 text-muted-foreground" />
                           )}
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium truncate">{session.session_name}</p>
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-sm font-medium truncate">{session.session_name}</p>
+                              {session.is_shared_by_me && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-flex items-center shrink-0 text-primary">
+                                      <Share2 size={11} />
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="right" className="text-xs">
+                                    我分享的会话
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                              {session.shared_from && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-flex items-center shrink-0 text-muted-foreground">
+                                      <Users size={11} />
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="right" className="text-xs">
+                                    来自 {session.shared_from.shared_by || "未知用户"} 的分享
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
                             <div className="flex items-center gap-2 mt-0.5">
                               <span className="text-xs text-muted-foreground">{session.create_time}</span>
                             </div>
