@@ -12,7 +12,7 @@ export function CopyButton({ text, className }: { text: string, className?: stri
       title="复制 Markdown 源码"
       onClick={async (e) => {
         e.preventDefault()
-        const ok = await copyToClipboard(text)
+        const ok = await copyToClipboard(text, e.currentTarget)
         if (!ok) return
         setCopied(true)
         setTimeout(() => setCopied(false), 1200)

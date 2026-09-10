@@ -19,8 +19,13 @@ export function uuid(): string {
 /**
  * 复制文本到剪贴板。navigator.clipboard 仅在安全上下文（HTTPS / localhost）可用，
  * 非 HTTPS 部署时会是 undefined，这里降级到 document.execCommand("copy")。
+ *
+ * anchor：触发复制的元素（如按钮）。Radix Dialog 等组件会用 FocusScope 做焦点陷阱，
+ * 若降级方案里的临时 textarea 挂到 document.body（陷阱之外），select() 触发的聚焦会被
+ * 焦点陷阱立刻抢回，导致复制失败或复制到空内容；因此优先把 textarea 挂在 anchor 的父节点下，
+ * 确保它仍在陷阱范围内。
  */
-export async function copyToClipboard(text: string): Promise<boolean> {
+export async function copyToClipboard(text: string, anchor?: HTMLElement | null): Promise<boolean> {
   if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
     try {
       await navigator.clipboard.writeText(text)
@@ -32,12 +37,13 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 
   if (typeof document === "undefined") return false
 
+  const container = anchor?.parentElement ?? document.body
   const textarea = document.createElement("textarea")
   textarea.value = text
   textarea.setAttribute("readonly", "")
   textarea.style.position = "fixed"
   textarea.style.top = "-9999px"
-  document.body.appendChild(textarea)
+  container.appendChild(textarea)
   textarea.select()
   let ok = false
   try {
@@ -45,6 +51,6 @@ export async function copyToClipboard(text: string): Promise<boolean> {
   } catch {
     ok = false
   }
-  document.body.removeChild(textarea)
+  container.removeChild(textarea)
   return ok
 }
