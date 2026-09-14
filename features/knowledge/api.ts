@@ -50,6 +50,8 @@ export interface KnowledgeChunk {
   score: number
   semantic_score: number
   keyword_score: number | null
+  /** 未开启 rerank 时为 null */
+  rerank_score?: number | null
   retrieval_method: RetrievalMethod
 }
 
@@ -73,12 +75,29 @@ export interface RagRetrieveRequest {
   retrieval_method?: RetrievalMethod
   semantic_weight?: number
   keyword_weight?: number
+  enable_rerank?: boolean
+  rerank_top_k?: number
+  rerank_top_n?: number
 }
 
 /** 知识库 RAG 问答请求参数 */
 export interface RagChatRequest extends RagRetrieveRequest {
   temperature?: number
 }
+
+/** 流式问答的进度阶段 */
+export type RagStreamStage = 'retrieving' | 'reranking' | 'answering'
+
+/** 后端各参数的默认值，前端表单与之保持一致 */
+export const RAG_DEFAULTS = {
+  top_k: 10,
+  semantic_weight: 0.7,
+  keyword_weight: 0.3,
+  enable_rerank: false,
+  rerank_top_k: 30,
+  rerank_top_n: 5,
+  temperature: 0.2,
+} as const
 
 /**
  * 获取当前用户的全部知识库文件列表
@@ -213,6 +232,44 @@ export async function embedKnowledgeFiles(fileIds: string[]): Promise<ApiRespons
   )
 }
 
+/** 组装检索/问答请求体：仅混合检索时提交权重，仅开启 rerank 时提交 rerank 参数 */
+function buildRagBody(request: RagChatRequest): Record<string, unknown> {
+  const {
+    query,
+    file_ids: fileIds,
+    top_k: topK = RAG_DEFAULTS.top_k,
+    retrieval_method: retrievalMethod = 'vector',
+    semantic_weight: semanticWeight = RAG_DEFAULTS.semantic_weight,
+    keyword_weight: keywordWeight = RAG_DEFAULTS.keyword_weight,
+    enable_rerank: enableRerank = RAG_DEFAULTS.enable_rerank,
+    rerank_top_k: rerankTopK = RAG_DEFAULTS.rerank_top_k,
+    rerank_top_n: rerankTopN = RAG_DEFAULTS.rerank_top_n,
+    temperature,
+  } = request
+
+  const body: Record<string, unknown> = {
+    query,
+    file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
+    top_k: topK,
+    retrieval_method: retrievalMethod,
+    enable_rerank: enableRerank,
+  }
+
+  if (retrievalMethod === 'hybrid') {
+    body.semantic_weight = semanticWeight
+    body.keyword_weight = keywordWeight
+  }
+  if (enableRerank) {
+    body.rerank_top_k = rerankTopK
+    body.rerank_top_n = rerankTopN
+  }
+  if (typeof temperature === 'number') {
+    body.temperature = temperature
+  }
+
+  return body
+}
+
 /**
  * 检索知识库中最相似的片段（不调用大模型，仅返回召回片段）
  * @param request 检索请求；file_ids 不传（null）则检索全部已编码知识库
@@ -220,15 +277,6 @@ export async function embedKnowledgeFiles(fileIds: string[]): Promise<ApiRespons
 export async function retrieveKnowledge(
   request: RagRetrieveRequest
 ): Promise<ApiResponse<KnowledgeChunk[]>> {
-  const {
-    query,
-    file_ids: fileIds,
-    top_k: topK = 5,
-    retrieval_method: retrievalMethod,
-    semantic_weight: semanticWeight,
-    keyword_weight: keywordWeight,
-  } = request
-
   return fetcher(
     `/knowledge/v1/retrieve`,
     {
@@ -236,14 +284,7 @@ export async function retrieveKnowledge(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        query,
-        file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
-        top_k: topK,
-        retrieval_method: retrievalMethod,
-        semantic_weight: semanticWeight,
-        keyword_weight: keywordWeight,
-      }),
+      body: JSON.stringify(buildRagBody(request)),
     }
   )
 }
@@ -255,16 +296,6 @@ export async function retrieveKnowledge(
 export async function chatKnowledge(
   request: RagChatRequest
 ): Promise<ApiResponse<ChatResult>> {
-  const {
-    query,
-    file_ids: fileIds,
-    top_k: topK = 5,
-    temperature = 0.2,
-    retrieval_method: retrievalMethod,
-    semantic_weight: semanticWeight,
-    keyword_weight: keywordWeight,
-  } = request
-
   return fetcher(
     `/knowledge/v1/chat`,
     {
@@ -273,16 +304,109 @@ export async function chatKnowledge(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        query,
-        file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
-        top_k: topK,
-        temperature,
-        retrieval_method: retrievalMethod,
-        semantic_weight: semanticWeight,
-        keyword_weight: keywordWeight,
+        temperature: RAG_DEFAULTS.temperature,
+        ...buildRagBody(request),
       }),
     }
   )
+}
+
+/** 流式问答事件回调 */
+export interface RagChatStreamHandlers {
+  /** 进度阶段变化 */
+  onProgress?: (stage: RagStreamStage, message: string) => void
+  /** 未开启 rerank 时的最终片段 */
+  onChunks?: (chunks: KnowledgeChunk[]) => void
+  /** 开启 rerank 时的初筛片段 */
+  onInitialChunks?: (chunks: KnowledgeChunk[]) => void
+  /** 开启 rerank 时重排后保留的片段 */
+  onRerankedChunks?: (chunks: KnowledgeChunk[]) => void
+  /** 回答文本增量，需要自行拼接 */
+  onAnswer?: (delta: string) => void
+  /** 流程结束 */
+  onDone?: () => void
+}
+
+/** 解析并分发单个 SSE 事件块 */
+function dispatchRagSseBlock(block: string, handlers: RagChatStreamHandlers) {
+  let eventName = 'message'
+  const dataLines: string[] = []
+
+  for (const line of block.split('\n')) {
+    if (line.startsWith(':')) continue
+    if (line.startsWith('event:')) eventName = line.slice(6).trim()
+    else if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart())
+  }
+  if (dataLines.length === 0) return
+
+  let payload: Record<string, unknown>
+  try {
+    payload = JSON.parse(dataLines.join('\n'))
+  } catch {
+    return
+  }
+
+  if (eventName === 'progress') {
+    handlers.onProgress?.(
+      payload.stage as RagStreamStage,
+      String(payload.message ?? '')
+    )
+  } else if (eventName === 'chunks') {
+    if (Array.isArray(payload.initial_chunks)) {
+      handlers.onInitialChunks?.(payload.initial_chunks as KnowledgeChunk[])
+    } else if (Array.isArray(payload.reranked_chunks)) {
+      handlers.onRerankedChunks?.(payload.reranked_chunks as KnowledgeChunk[])
+    } else if (Array.isArray(payload.chunks)) {
+      handlers.onChunks?.(payload.chunks as KnowledgeChunk[])
+    }
+  } else if (eventName === 'answer') {
+    handlers.onAnswer?.(String(payload.answer ?? ''))
+  } else if (eventName === 'done') {
+    handlers.onDone?.()
+  }
+}
+
+/**
+ * 流式 RAG 问答：依次收到进度、检索片段与回答增量
+ * @param request 问答请求；file_ids 不传（null）则检索全部已编码知识库
+ */
+export async function chatKnowledgeStream(
+  request: RagChatRequest,
+  handlers: RagChatStreamHandlers,
+  signal?: AbortSignal
+): Promise<void> {
+  const res: Response = await fetcher(
+    `/knowledge/v1/chat_stream`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        temperature: RAG_DEFAULTS.temperature,
+        ...buildRagBody(request),
+      }),
+      signal,
+    }
+  )
+
+  const reader = res.body?.getReader()
+  if (!reader) throw new Error('无法读取问答响应流')
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n')
+
+    const blocks = buffer.split('\n\n')
+    buffer = blocks.pop() ?? ''
+    for (const block of blocks) dispatchRagSseBlock(block, handlers)
+  }
+
+  if (buffer.trim()) dispatchRagSseBlock(buffer, handlers)
 }
 
 /** 删除文件返回结果 */
