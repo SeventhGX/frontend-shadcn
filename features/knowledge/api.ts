@@ -93,7 +93,7 @@ export const RAG_DEFAULTS = {
   top_k: 10,
   semantic_weight: 0.7,
   keyword_weight: 0.3,
-  enable_rerank: false,
+  enable_rerank: true, // 用户需求默认开启重排序
   rerank_top_k: 30,
   rerank_top_n: 5,
   temperature: 0.2,
