@@ -10,6 +10,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
+import { uuid } from "@/lib/utils"
 import {
   autoTagKnowledgeFile,
   deleteKnowledgeFiles,
@@ -147,7 +148,7 @@ export default function KnowledgePage() {
     if (fileIds.length === 0) return
     const showProgressToast = fileIds.length > 1
     const progressToastId = showProgressToast
-      ? `embedding-progress-${crypto.randomUUID()}`
+      ? `embedding-progress-${uuid()}`
       : undefined
     let progressTotal = fileIds.length
     let failedCount = 0
