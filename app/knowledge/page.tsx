@@ -20,6 +20,7 @@ import {
   setKnowledgeTags,
   unpublishKnowledgeFiles,
   uploadKnowledgeFile,
+  type EmbeddingProgressEvent,
   type KnowledgeFile,
   type KnowledgeTag,
 } from "@/features/knowledge/api"
@@ -29,6 +30,53 @@ import { KnowledgeChatPanel } from "./chat-panel"
 /** AI 打标请求超时后，按此节奏轮询后台生成结果 */
 const AUTO_TAG_POLL_INTERVAL_MS = 5000
 const AUTO_TAG_POLL_MAX_ATTEMPTS = 60
+
+function EmbeddingProgressDetails({
+  completed,
+  total,
+  message,
+}: {
+  completed: number
+  total: number
+  message: string
+}) {
+  const percent = total > 0 ? Math.round((completed / total) * 100) : 100
+  const boundedPercent = Math.min(100, Math.max(0, percent))
+
+  return (
+    <div className="mt-2 w-72">
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span className="tabular-nums text-muted-foreground">
+          {boundedPercent}%
+        </span>
+        <span className="shrink-0 tabular-nums text-muted-foreground">
+          {completed} / {total}
+        </span>
+      </div>
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full bg-primary transition-all duration-300"
+          style={{ width: `${boundedPercent}%` }}
+        />
+      </div>
+      <div className="mt-2 truncate text-xs text-muted-foreground" title={message}>
+        {message}
+      </div>
+    </div>
+  )
+}
+
+function getEmbeddingProgressMessage(event: EmbeddingProgressEvent) {
+  const filename = event.filename ? `：${event.filename}` : ""
+
+  if (event.status === "success") {
+    return `已编码${filename}，生成 ${event.chunk_count} 个片段`
+  }
+  if (event.status === "empty") {
+    return `空文件已跳过${filename}`
+  }
+  return `编码失败${filename}${event.error ? `，${event.error}` : ""}`
+}
 
 export default function KnowledgePage() {
   const { user } = useAuth()
@@ -97,9 +145,53 @@ export default function KnowledgePage() {
 
   const handleEmbed = async (fileIds: string[]) => {
     if (fileIds.length === 0) return
+    const showProgressToast = fileIds.length > 1
+    const progressToastId = showProgressToast
+      ? `embedding-progress-${crypto.randomUUID()}`
+      : undefined
+    let progressTotal = fileIds.length
+    let failedCount = 0
+
+    const updateProgressToast = (completed: number, message: string) => {
+      if (!progressToastId) return
+      toast.loading("文件编码中", {
+        id: progressToastId,
+        duration: Infinity,
+        description: (
+          <EmbeddingProgressDetails
+            completed={completed}
+            total={progressTotal}
+            message={message}
+          />
+        ),
+      })
+    }
+
+    const summaryToastOptions = progressToastId
+      ? { id: progressToastId, description: undefined, duration: 5000 }
+      : undefined
+
     try {
       setEmbedding(true)
-      const res = await embedKnowledgeFiles(fileIds)
+      updateProgressToast(0, `准备编码 ${fileIds.length} 个文件`)
+      const res = await embedKnowledgeFiles(fileIds, {
+        onStart: (event) => {
+          progressTotal = event.total
+          updateProgressToast(event.completed, `开始编码 ${event.total} 个文件`)
+        },
+        onProgress: (event) => {
+          if (event.status === "error") failedCount += 1
+          progressTotal = event.total
+          updateProgressToast(
+            event.completed,
+            getEmbeddingProgressMessage(event)
+          )
+        },
+        onDone: (event) => {
+          progressTotal = event.total
+          updateProgressToast(event.completed, "编码完成，正在汇总结果...")
+        },
+      })
       const results = res?.data ?? []
       const totalChunks = results.reduce(
         (sum, item) => sum + (item.chunk_count ?? 0),
@@ -107,15 +199,21 @@ export default function KnowledgePage() {
       )
       if (results.length > 0) {
         toast.success(
-          `已完成 ${results.length} 个文件编码，共生成 ${totalChunks} 个片段`
+          `已完成 ${results.length} 个文件编码，共生成 ${totalChunks} 个片段${failedCount > 0 ? `，${failedCount} 个失败` : ""}`,
+          summaryToastOptions
         )
+      } else if (failedCount > 0) {
+        toast.error(`${failedCount} 个文件编码失败`, summaryToastOptions)
       } else {
-        toast.info("所选文件均已编码，无需重复处理")
+        toast.info(
+          "所选文件均已编码，无需重复处理",
+          summaryToastOptions
+        )
       }
       await fetchFiles()
     } catch (error) {
       console.error(error)
-      toast.error("编码失败，请稍后重试")
+      toast.error("编码失败，请稍后重试", summaryToastOptions)
     } finally {
       setEmbedding(false)
     }

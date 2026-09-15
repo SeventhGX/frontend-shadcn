@@ -61,6 +61,38 @@ export interface EmbeddingResult {
   chunk_count: number
 }
 
+/** 文件编码流式事件 */
+export interface EmbeddingStartEvent {
+  total: number
+  completed: number
+  max_workers: number
+  max_workers_per_user: number
+}
+
+export type EmbeddingProgressStatus = 'success' | 'error' | 'empty'
+
+export interface EmbeddingProgressEvent {
+  file_id: string
+  filename?: string | null
+  chunk_count: number
+  completed: number
+  total: number
+  status: EmbeddingProgressStatus
+  error?: string
+}
+
+export interface EmbeddingDoneEvent {
+  total: number
+  completed: number
+  embedded_files: EmbeddingResult[]
+}
+
+export interface EmbeddingStreamHandlers {
+  onStart?: (event: EmbeddingStartEvent) => void
+  onProgress?: (event: EmbeddingProgressEvent) => void
+  onDone?: (event: EmbeddingDoneEvent) => void
+}
+
 /** RAG 问答返回结果 */
 export interface ChatResult {
   answer: string
@@ -215,11 +247,15 @@ export async function autoTagKnowledgeFile(
 
 /**
  * 对选中的文件进行向量编码（Embedding）
- * 已编码过的文件会被后端跳过，返回本次实际完成编码的文件列表。
+ * 后端以 SSE 推送 start / progress / done 事件，最终返回 done 中的 embedded_files。
  * @param fileIds 需要编码的文件 file_id 列表
+ * @param handlers 流式编码进度回调
  */
-export async function embedKnowledgeFiles(fileIds: string[]): Promise<ApiResponse<EmbeddingResult[]>> {
-  return fetcher(
+export async function embedKnowledgeFiles(
+  fileIds: string[],
+  handlers?: EmbeddingStreamHandlers
+): Promise<ApiResponse<EmbeddingResult[]>> {
+  const res = await fetcher(
     `/knowledge/v1/embedding_files`,
     {
       method: 'POST',
@@ -230,6 +266,80 @@ export async function embedKnowledgeFiles(fileIds: string[]): Promise<ApiRespons
       body: JSON.stringify(fileIds),
     }
   )
+
+  if (!(res instanceof Response)) {
+    return res as ApiResponse<EmbeddingResult[]>
+  }
+
+  const reader = res.body?.getReader()
+  if (!reader) throw new Error('无法读取编码响应流')
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+  const streamState: { doneEvent?: EmbeddingDoneEvent } = {}
+
+  const handleBlock = (block: string): boolean => {
+    const { event, data } = parseSseBlock(block)
+    if (!data) return false
+
+    let payload: Record<string, unknown>
+    try {
+      payload = JSON.parse(data)
+    } catch {
+      return false
+    }
+
+    if (event === 'start') {
+      handlers?.onStart?.(payload as unknown as EmbeddingStartEvent)
+    } else if (event === 'progress') {
+      handlers?.onProgress?.(payload as unknown as EmbeddingProgressEvent)
+    } else if (event === 'done') {
+      streamState.doneEvent = payload as unknown as EmbeddingDoneEvent
+      handlers?.onDone?.(streamState.doneEvent)
+      return true
+    }
+
+    return false
+  }
+
+  while (!streamState.doneEvent) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n')
+
+    const blocks = buffer.split('\n\n')
+    buffer = blocks.pop() ?? ''
+    for (const block of blocks) {
+      if (handleBlock(block)) break
+    }
+  }
+
+  if (buffer.trim()) handleBlock(buffer)
+  if (!streamState.doneEvent) throw new Error('编码响应流异常中断')
+  await reader.cancel()
+
+  return {
+    message: 'success',
+    code: 0,
+    data: streamState.doneEvent.embedded_files ?? [],
+  }
+}
+
+/** 解析单个 SSE 事件块，提取 event 名与合并后的 data 内容 */
+function parseSseBlock(block: string): { event: string; data: string } {
+  let event = 'message'
+  const dataLines: string[] = []
+
+  for (const line of block.split('\n')) {
+    const trimmed = line.replace(/\r$/, '')
+    if (trimmed.startsWith(':')) continue
+    if (trimmed.startsWith('event:')) event = trimmed.slice(6).trim()
+    else if (trimmed.startsWith('data:')) {
+      dataLines.push(trimmed.slice(5).replace(/^ /, ''))
+    }
+  }
+
+  return { event, data: dataLines.join('\n') }
 }
 
 /** 组装检索/问答请求体：仅混合检索时提交权重，仅开启 rerank 时提交 rerank 参数 */
