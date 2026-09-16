@@ -766,10 +766,10 @@ export function KnowledgeDataTable({
       </div>
 
       {/* 数据表 */}
-      <div className="flex-1 overflow-auto rounded-md border">
+      <div className="min-h-0 flex-1 overflow-hidden rounded-md border">
         {/* 固定表格布局：其余列定宽，剩余宽度全部留给文件名列 */}
-        <Table className="table-fixed">
-          <TableHeader className="bg-muted/50 sticky top-0 z-10">
+        <Table className="table-fixed" containerClassName="h-full overflow-auto">
+          <TableHeader className="sticky top-0 z-10 bg-muted shadow-sm">
             <TableRow>
               <TableHead className="w-10">
                 <Checkbox
