@@ -3,8 +3,10 @@
 import { memo, useMemo, useState } from "react"
 import { Bot, User, ChevronDown, ChevronRight, BrainCircuit } from "lucide-react"
 import ReactMarkdown, { type Components } from "react-markdown"
+import rehypeKatex from "rehype-katex"
 import remarkGfm from "remark-gfm"
 import remarkBreaks from "remark-breaks"
+import remarkMath from "remark-math"
 import { cn } from "@/lib/utils"
 import { CopyButton } from "./CopyButton"
 import {
@@ -59,6 +61,31 @@ function normalizeMarkdownBreakTags(content: string) {
   return content.replace(/<br\s*\/?\s*>/gi, "\n")
 }
 
+function normalizeMarkdownMathDelimiters(content: string) {
+  const protectedMarkdownPattern = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*(?:`|$))/g
+
+  return content
+    .split(protectedMarkdownPattern)
+    .map((segment) => {
+      if (
+        segment.startsWith("```") ||
+        segment.startsWith("~~~") ||
+        segment.startsWith("`")
+      ) {
+        return segment
+      }
+
+      return segment
+        .replace(/\\\[([\s\S]*?)\\\]/g, (_, math: string) => `\n$$\n${math.trim()}\n$$\n`)
+        .replace(/\\\(([\s\S]*?)\\\)/g, (_, math: string) => `$${math}$`)
+    })
+    .join("")
+}
+
+function normalizeMarkdownContent(content: string) {
+  return normalizeMarkdownMathDelimiters(normalizeMarkdownBreakTags(content))
+}
+
 // 与 saveFile 调用一致的取名逻辑：未提供名称时按当前时间戳生成
 function resolveImageName(img: ChatImageItem): string {
   if (img.name && img.name.trim()) return img.name
@@ -97,7 +124,8 @@ function triggerDownload(blob: Blob, name: string) {
 }
 
 // 插件数组与组件表必须保持引用稳定，否则 ReactMarkdown 每次渲染都会重建整棵子树
-const REMARK_PLUGINS = [remarkGfm, remarkBreaks]
+const REMARK_PLUGINS = [remarkMath, remarkGfm, remarkBreaks]
+const REHYPE_PLUGINS = [rehypeKatex]
 
 const MARKDOWN_COMPONENTS: Components = {
   p: ({ children }) => <p className="my-1 leading-relaxed">{children}</p>,
@@ -163,9 +191,13 @@ const MARKDOWN_COMPONENTS: Components = {
 
 // 按 content memo，避免流式输出时其他消息重复解析 markdown
 const MarkdownContent = memo(function MarkdownContent({ content }: { content: string }) {
-  const normalized = useMemo(() => normalizeMarkdownBreakTags(content), [content])
+  const normalized = useMemo(() => normalizeMarkdownContent(content), [content])
   return (
-    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>
+    <ReactMarkdown
+      remarkPlugins={REMARK_PLUGINS}
+      rehypePlugins={REHYPE_PLUGINS}
+      components={MARKDOWN_COMPONENTS}
+    >
       {normalized}
     </ReactMarkdown>
   )
