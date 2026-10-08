@@ -20,17 +20,17 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
+// 获取指定周的周五（0 为本周，-1 为上周，以此类推）
+export const getFridayOfWeek = (weeksAgo: number): Date => {
+  const today = new Date()
+  const currentDay = today.getDay() // 0 (周日) 到 6 (周六)
+  const daysToFriday = currentDay <= 5 ? 5 - currentDay : -(currentDay - 5)
+  const thisFriday = addDays(today, daysToFriday)
+  return addDays(thisFriday, weeksAgo * 7)
+}
+
 export default function SelectArticleDate({ date, setDate }: { date: Date | undefined, setDate: (date: Date) => void }) {
   const [open, setOpen] = React.useState(false)
-
-  // 获取指定周的周五
-  const getFridayOfWeek = (weeksAgo: number): Date => {
-    const today = new Date()
-    const currentDay = today.getDay() // 0 (周日) 到 6 (周六)
-    const daysToFriday = currentDay <= 5 ? 5 - currentDay : -(currentDay - 5)
-    const thisFriday = addDays(today, daysToFriday)
-    return addDays(thisFriday, weeksAgo * 7)
-  }
 
   // 获取指定日期的周五
   const getFridayFromDate = (inputDate: Date | undefined): Date => {

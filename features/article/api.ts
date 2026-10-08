@@ -53,7 +53,7 @@ export async function maToHtml(mdStr: string) {
 
 export async function newArticleByStream(url: string) {
   return fetcher(
-    `/articles/v1/url_stream?url=${url}`,
+    `/articles/v1/url_stream?url=${encodeURIComponent(url)}`,
     { method: 'POST' }
   )
 }

@@ -14,20 +14,198 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Calendar } from "@/components/ui/calendar"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 import { useState } from "react"
 import { toast } from "sonner"
 import { format } from "date-fns"
-import { FilePlus, CalendarIcon, ChevronDown, ChevronUp, Save } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { json } from "stream/consumers"
+import { ChevronDown, ChevronUp, Save } from "lucide-react"
 import { newArticle } from "@/features/article/api"
 import SelectArticleDate from "@/components/common/selectArticleDate"
+
+export interface ArticleFormData {
+  title: string
+  key_words: string
+  publish_time: string
+  url: string
+  summary: string
+  content: string
+  mail_date?: Date
+}
+
+export const emptyArticle: ArticleFormData = {
+  title: "",
+  key_words: "",
+  publish_time: "",
+  url: "",
+  summary: "",
+  content: "",
+  mail_date: undefined,
+}
+
+// 解析接口返回的文章 JSON 字符串（兼容被 ```json 代码块包裹的情况）
+export function parseArticleData(dataString: string): ArticleFormData {
+  const jsonStr = dataString.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")
+  const parsedData = JSON.parse(jsonStr)
+  return {
+    title: parsedData.title || "",
+    key_words: parsedData.key_words || "",
+    publish_time: parsedData.publish_time || "",
+    url: parsedData.url || "",
+    summary: parsedData.summary || "",
+    content: parsedData.content || "",
+    mail_date: parsedData.mail_date ? new Date(parsedData.mail_date) : undefined,
+  }
+}
+
+// 校验必填项，返回错误信息；校验通过返回 null
+export function validateArticle(data: ArticleFormData): string | null {
+  if (!data.title.trim()) return '请输入标题'
+  if (!data.url.trim()) return '请输入链接'
+  return null
+}
+
+// 调用 API 保存文章
+export async function saveArticle(data: ArticleFormData) {
+  return newArticle({
+    "title": data.title || null,
+    "key_words": data.key_words || null,
+    "publish_time": data.publish_time || null,
+    "content": data.content || null,
+    "summary": data.summary || null,
+    "url": data.url || null,
+    "mail_date": data.mail_date ? format(data.mail_date, 'yyyy-MM-dd') : null
+  })
+}
+
+// 将表单数据拼接为字符串
+function stringifyFormData(data: ArticleFormData): string {
+  const formData = {
+    "title": data.title,
+    "key_words": data.key_words,
+    "publish_time": data.publish_time,
+    "content": data.content,
+    "summary": data.summary,
+    "url": data.url,
+    "mail_date": data.mail_date ? format(data.mail_date, 'yyyy-MM-dd') : ''
+  }
+  return JSON.stringify(formData, null, 2) // 格式化输出，每项后增加换行符和缩进
+}
+
+interface ArticleFormFieldsProps {
+  data: ArticleFormData
+  onChange: (patch: Partial<ArticleFormData>) => void
+}
+
+// 文章表单字段，供保存弹窗与明细查看弹窗复用
+export function ArticleFormFields({ data, onChange }: ArticleFormFieldsProps) {
+  const [summaryExpanded, setSummaryExpanded] = useState(true)
+  const [contentExpanded, setContentExpanded] = useState(false)
+
+  return (
+    <div className="space-y-4 pr-2">
+      {/* 标题 */}
+      <div className="space-y-2">
+        <Label htmlFor="title">标题</Label>
+        <Input
+          id="title"
+          value={data.title}
+          onChange={(e) => onChange({ title: e.target.value })}
+          placeholder="请输入文章标题"
+        />
+      </div>
+
+      {/* 关键词 */}
+      <div className="space-y-2">
+        <Label htmlFor="keywords">关键词</Label>
+        <Input
+          id="keywords"
+          value={data.key_words}
+          onChange={(e) => onChange({ key_words: e.target.value })}
+          placeholder="请输入关键词"
+        />
+      </div>
+
+      {/* 新闻发布时间 */}
+      <div className="space-y-2">
+        <Label htmlFor="publishTime">新闻发布时间</Label>
+        <Input
+          id="publishTime"
+          value={data.publish_time}
+          onChange={(e) => onChange({ publish_time: e.target.value })}
+          placeholder="请输入发布时间"
+        />
+      </div>
+
+      {/* 链接 */}
+      <div className="space-y-2">
+        <Label htmlFor="link">链接</Label>
+        <Input
+          id="link"
+          value={data.url}
+          onChange={(e) => onChange({ url: e.target.value })}
+          placeholder="请输入文章链接"
+        />
+      </div>
+
+      {/* 预计邮件发送日期 */}
+      <div className="space-y-2">
+        <Label>预计邮件发送日期</Label>
+        <SelectArticleDate
+          date={data.mail_date}
+          setDate={(mail_date) => onChange({ mail_date })} />
+      </div>
+
+      {/* 总结 - 可折叠 */}
+      <div className="space-y-2">
+        <div className="flex space-x-2">
+          <Label htmlFor="summary"
+            onClick={() => setSummaryExpanded(!summaryExpanded)}
+          >
+            总结
+            {summaryExpanded ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </Label>
+        </div>
+        {summaryExpanded && (
+          <Textarea
+            id="summary"
+            value={data.summary}
+            onChange={(e) => onChange({ summary: e.target.value })}
+            placeholder="请输入文章总结"
+            className="min-h-32"
+          />
+        )}
+      </div>
+
+      {/* 原文 - 可折叠 */}
+      <div className="space-y-2">
+        <div className="flex space-x-2">
+          <Label htmlFor="content"
+            onClick={() => setContentExpanded(!contentExpanded)}
+          >
+            原文
+            {contentExpanded ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </Label>
+        </div>
+        {contentExpanded && (
+          <Textarea
+            id="content"
+            value={data.content}
+            onChange={(e) => onChange({ content: e.target.value })}
+            placeholder="请输入文章原文"
+            className="min-h-48"
+          />
+        )}
+      </div>
+    </div>
+  )
+}
 
 interface AddArticleProps {
   onArticleAdded?: (articleData: string) => void
@@ -37,103 +215,29 @@ interface AddArticleProps {
 
 export function AddArticle({ onArticleAdded, initialData, isSubmitting }: AddArticleProps) {
   const [open, setOpen] = useState(false)
-  const [title, setTitle] = useState("")
-  const [keyWords, setKeyWords] = useState("")
-  const [publishTime, setPublishTime] = useState("")
-  const [url, setUrl] = useState("")
-  const [summary, setSummary] = useState("")
-  const [content, setContent] = useState("")
-  const [mailDate, setMailDate] = useState<Date | undefined>(undefined)
+  const [form, setForm] = useState<ArticleFormData>(emptyArticle)
 
-  const [summaryExpanded, setSummaryExpanded] = useState(true)
-  const [contentExpanded, setContentExpanded] = useState(false)
-
-  // 解析父组件传入的字符串并赋值给表单
-  const parseDataString = (dataString: string) => {
-    let parsedData = JSON.parse(dataString)
-    setTitle(parsedData.title || "")
-    setKeyWords(parsedData.key_words || "")
-    setPublishTime(parsedData.publish_time || "")
-    setUrl(parsedData.url || "")
-    setSummary(parsedData.summary || "")
-    setContent(parsedData.content || "")
-    setMailDate(parsedData.mail_date ? new Date(parsedData.mail_date) : undefined)
-  }
-
-  // 当 dialog 打开时，如果有 initialData 则解析
+  // 当 dialog 打开时，如果有 initialData 则解析；关闭时清空表单
   const handleOpenChange = (isOpen: boolean) => {
     setOpen(isOpen)
-    setSummaryExpanded(true)
-    setContentExpanded(false)
-    if (isOpen && initialData) {
-      parseDataString(initialData)
-    }
-    // 关闭时清空表单
-    if (!isOpen) {
-      resetForm()
-    }
-  }
-
-  // 重置表单
-  const resetForm = () => {
-    setTitle("")
-    setKeyWords("")
-    setPublishTime("")
-    setUrl("")
-    setSummary("")
-    setContent("")
-    setMailDate(undefined)
-  }
-
-  // 将表单数据拼接为字符串
-  const stringifyFormData = (): string => {
-    const formData = {
-      "title": title,
-      "key_words": keyWords,
-      "publish_time": publishTime,
-      "content": content,
-      "summary": summary,
-      "url": url,
-      "mail_date": mailDate ? format(mailDate, 'yyyy-MM-dd') : ''
-    }
-    return JSON.stringify(formData, null, 2) // 格式化输出，每项后增加换行符和缩进
-  }
-
-  // 调用 API 保存文章
-  const saveArticle = async () => {
-    let response = await newArticle({
-      "title": title ? title : null,
-      "key_words": keyWords ? keyWords : null,
-      "publish_time": publishTime ? publishTime : null,
-      "content": content ? content : null,
-      "summary": summary ? summary : null,
-      "url": url ? url : null,
-      "mail_date": mailDate ? format(mailDate, 'yyyy-MM-dd') : null
-    })
-
-    return response
+    setForm(isOpen && initialData ? parseArticleData(initialData) : emptyArticle)
   }
 
   // 提交表单
   const handleSubmit = async () => {
     try {
       // 简单验证
-      if (!title.trim()) {
-        toast.error('请输入标题')
-        return
-      }
-
-      if (!url.trim()) {
-        toast.error('请输入链接')
+      const error = validateArticle(form)
+      if (error) {
+        toast.error(error)
         return
       }
 
       // 调用 API 保存
-      await saveArticle()
+      await saveArticle(form)
 
       // 拼接数据并返回给父组件
-      const dataString = stringifyFormData()
-      onArticleAdded?.(dataString)
+      onArticleAdded?.(stringifyFormData(form))
 
       toast.success('文章添加成功')
       setOpen(false)
@@ -160,131 +264,10 @@ export function AddArticle({ onArticleAdded, initialData, isSubmitting }: AddArt
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto min-h-0 rounded-md pt-4">
-          <div className="space-y-4 pr-2">
-            {/* 标题 */}
-            <div className="space-y-2">
-              <Label htmlFor="title">标题</Label>
-              <Input
-                id="title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="请输入文章标题"
-              />
-            </div>
-
-            {/* 关键词 */}
-            <div className="space-y-2">
-              <Label htmlFor="keywords">关键词</Label>
-              <Input
-                id="keywords"
-                value={keyWords}
-                onChange={(e) => setKeyWords(e.target.value)}
-                placeholder="请输入关键词"
-              />
-            </div>
-
-            {/* 新闻发布时间 */}
-            <div className="space-y-2">
-              <Label htmlFor="publishTime">新闻发布时间</Label>
-              <Input
-                id="publishTime"
-                value={publishTime}
-                onChange={(e) => setPublishTime(e.target.value)}
-                placeholder="请输入发布时间"
-              />
-            </div>
-
-            {/* 链接 */}
-            <div className="space-y-2">
-              <Label htmlFor="link">链接</Label>
-              <Input
-                id="link"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="请输入文章链接"
-              />
-            </div>
-
-            {/* 预计邮件发送日期 */}
-            <div className="space-y-2">
-              <Label>预计邮件发送日期</Label>
-              {/* <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant={"outline"}
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !mailDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {mailDate ? format(mailDate, "PPP") : <span>选择日期</span>}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={mailDate}
-                    onSelect={setMailDate}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover> */}
-              <SelectArticleDate
-                date={mailDate}
-                setDate={setMailDate} />
-            </div>
-
-            {/* 总结 - 可折叠 */}
-            <div className="space-y-2">
-              <div className="flex space-x-2">
-                <Label htmlFor="summary"
-                  onClick={() => setSummaryExpanded(!summaryExpanded)}
-                >
-                  总结
-                  {summaryExpanded ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
-                </Label>
-              </div>
-              {summaryExpanded && (
-                <Textarea
-                  id="summary"
-                  value={summary}
-                  onChange={(e) => setSummary(e.target.value)}
-                  placeholder="请输入文章总结"
-                  className="min-h-32"
-                />
-              )}
-            </div>
-
-            {/* 原文 - 可折叠 */}
-            <div className="space-y-2">
-              <div className="flex space-x-2">
-                <Label htmlFor="content"
-                  onClick={() => setContentExpanded(!contentExpanded)}
-                >
-                  原文
-                  {contentExpanded ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
-                </Label>
-              </div>
-              {contentExpanded && (
-                <Textarea
-                  id="content"
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="请输入文章原文"
-                  className="min-h-48"
-                />
-              )}
-            </div>
-          </div>
+          <ArticleFormFields
+            data={form}
+            onChange={(patch) => setForm(prev => ({ ...prev, ...patch }))}
+          />
         </div>
 
         <DialogFooter className="shrink-0 pt-4">

@@ -1,15 +1,15 @@
 "use client"
 
 import { searchByStream } from "@/features/article/api"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { FileText, Send, Sparkle, ArrowUpDown, Search } from "lucide-react"
-import { AddArticle } from "@/app/articles/addArticle"
+import { FileText, Sparkle, Search, Loader2 } from "lucide-react"
 import { AuthGuard } from "@/components/common/auth-guard"
 import { Textarea } from "@/components/ui/textarea"
+import { readSseStream } from "@/lib/sse"
+import { extractSearchResults, SearchResultTable } from "@/app/search/searchResultTable"
 
 export default function SearchPage() {
   const [question, setQuestion] = useState("")
@@ -18,6 +18,10 @@ export default function SearchPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [accordionValue, setAccordionValue] = useState<string | undefined>("reasoning") // 推理内容默认展开
   const [isReasoning, setIsReasoning] = useState(false) // 是否正在推理
+  const [searchId, setSearchId] = useState(0) // 每次搜索递增，用于重置结果表格中各行的状态
+
+  // content 为流式返回的 JSON，每解析出一条完整数据就在表格中显示一行
+  const results = useMemo(() => extractSearchResults(content), [content])
 
   const handleSubmit = async () => {
     try {
@@ -27,116 +31,30 @@ export default function SearchPage() {
       // 清空之前的内容
       setReasoningContent("")
       setContent("")
+      setSearchId(prev => prev + 1)
 
       const response = await searchByStream({ "system_prompt": "", "content": question })
 
-      // 获取流读取器
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-
-      if (!reader) {
-        throw new Error('无法获取流读取器')
-      }
-
-      let buffer = '' // 用于缓存不完整的行
       let hasReceivedContent = false // 用于跟踪是否已经接收到 content 数据
+      await readSseStream(response, (data) => {
+        // 根据字段类型更新对应的状态
+        if (data.reasoning_content !== undefined) {
+          setReasoningContent(prev => prev + data.reasoning_content)
+        }
 
-      while (true) {
-        const { done, value } = await reader.read()
-
-        if (done) break
-
-        // 解码数据块
-        buffer += decoder.decode(value, { stream: true })
-
-        // 按行分割
-        const lines = buffer.split('\n')
-
-        // 保留最后一个不完整的行
-        buffer = lines.pop() || ''
-
-        // 处理每一行
-        for (const line of lines) {
-          const trimmedLine = line.trim()
-          if (trimmedLine) {
-            // 移除 SSE 格式的 "data: " 前缀
-            let jsonStr = trimmedLine
-            if (trimmedLine.startsWith('data: ')) {
-              jsonStr = trimmedLine.substring(6)
-            }
-
-            // 检查是否为 SSE 终止标记
-            if (jsonStr === '[DONE]' || jsonStr.trim() === '[DONE]') {
-              console.log('SSE 流已完成')
-              continue
-            }
-
-            // 跳过空字符串
-            if (!jsonStr.trim()) {
-              continue
-            }
-
-            try {
-              const data = JSON.parse(jsonStr)
-
-              // 根据字段类型更新对应的状态
-              if (data.reasoning_content !== undefined) {
-                setReasoningContent(prev => prev + data.reasoning_content)
-                // console.log('Received reasoning_content:', data.reasoning_content)
-              }
-
-              if (data.content !== undefined) {
-                setContent(prev => prev + data.content)
-                // 只在第一次接收到 content 时切换状态
-                if (!hasReceivedContent) {
-                  hasReceivedContent = true
-                  setIsReasoning(false) // 推理完成，切换状态
-                  setAccordionValue(undefined) // 推理完成后自动折叠推理内容
-                }
-              }
-            } catch (parseError) {
-              console.warn('JSON 解析错误:', trimmedLine, parseError)
-            }
+        if (data.content !== undefined) {
+          setContent(prev => prev + data.content)
+          // 只在第一次接收到 content 时切换状态
+          if (!hasReceivedContent) {
+            hasReceivedContent = true
+            setIsReasoning(false) // 推理完成，切换状态
+            setAccordionValue(undefined) // 推理完成后自动折叠推理内容
           }
         }
-      }
-
-      // 处理最后剩余的缓冲区内容
-      if (buffer.trim()) {
-        // 移除 SSE 格式的 "data: " 前缀
-        let jsonStr = buffer.trim()
-        if (jsonStr.startsWith('data: ')) {
-          jsonStr = jsonStr.substring(6)
-        }
-
-        // 检查是否为 SSE 终止标记
-        if (jsonStr === '[DONE]' || jsonStr.trim() === '[DONE]') {
-          console.log('SSE 流已完成')
-        } else if (jsonStr.trim()) {
-          try {
-            const data = JSON.parse(jsonStr)
-            if (data.reasoning_content !== undefined) {
-              setReasoningContent(prev => prev + data.reasoning_content)
-            }
-            if (data.content !== undefined) {
-              setContent(prev => prev + data.content)
-              // 只在第一次接收到 content 时切换状态
-              if (!hasReceivedContent) {
-                hasReceivedContent = true
-                setIsReasoning(false) // 推理完成，切换状态
-                setAccordionValue(undefined) // 推理完成后自动折叠推理内容
-              }
-            }
-          } catch (parseError) {
-            console.warn('JSON 解析错误:', buffer, parseError)
-          }
-        }
-      }
-
-      // alert('文章获取成功！')
+      })
     } catch (error) {
       console.error('Error:', error)
-      alert('文章获取失败，请检查控制台错误信息。')
+      alert('搜索失败，请检查控制台错误信息。')
     } finally {
       setIsSubmitting(false)
       setIsReasoning(false) // 确保在任何情况下都能重置推理状态
@@ -163,7 +81,6 @@ export default function SearchPage() {
             <Button
               onClick={handleSubmit}
               disabled={!question || isSubmitting}
-              // variant="outline"
             >
               <Search size={16} className="mr-1" />
               {isSubmitting ? "处理中..." : "搜索"}
@@ -172,7 +89,7 @@ export default function SearchPage() {
 
         </div>
 
-        {/* 可滚动区域：推理内容和内容展示 */}
+        {/* 可滚动区域：推理内容和搜索结果展示 */}
         <div className="flex-1 min-h-0 overflow-y-auto space-y-2">
           {/* 推理内容显示区域 - 使用 Accordion 折叠 */}
           {reasoning_content && (
@@ -193,16 +110,27 @@ export default function SearchPage() {
             </Accordion>
           )}
 
-          {/* 内容显示区域 */}
+          {/* 搜索结果显示区域 */}
           {content && (
             <div className="space-y-2">
-              <span className="flex gap-2">
+              <span className="flex items-center gap-2">
                 <FileText size={16} />
-                <Label className="font-bold">内容</Label>
+                <Label className="font-bold">搜索结果（{results.length} 条）</Label>
+                {isSubmitting && (
+                  <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                    <Loader2 size={14} className="animate-spin" />
+                    接收中...
+                  </span>
+                )}
               </span>
-              <div className="p-4 bg-muted rounded-md whitespace-pre-wrap">
-                {content}
-              </div>
+              {results.length > 0 ? (
+                <SearchResultTable key={searchId} results={results} />
+              ) : !isSubmitting && (
+                // 未能解析出任何结果时，展示原始内容以便排查
+                <div className="p-4 bg-muted rounded-md whitespace-pre-wrap">
+                  {content}
+                </div>
+              )}
             </div>
           )}
         </div>
