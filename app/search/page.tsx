@@ -10,6 +10,7 @@ import { AuthGuard } from "@/components/common/auth-guard"
 import { Textarea } from "@/components/ui/textarea"
 import { readSseStream } from "@/lib/sse"
 import { extractSearchResults, SearchResultTable } from "@/app/search/searchResultTable"
+import { PromptTemplateToolbar } from "@/app/search/promptTemplate"
 
 export default function SearchPage() {
   const [question, setQuestion] = useState("")
@@ -66,13 +67,17 @@ export default function SearchPage() {
       <div className="h-full flex flex-col flex-1 gap-2 p-4 overflow-hidden">
         {/* 固定高度区域：输入框和按钮 */}
         <div className="flex-none space-y-2">
-          <div>
-            <Label htmlFor="question" className="font-bold">搜索需求</Label>
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Label htmlFor="question" className="font-bold">搜索需求</Label>
+              {/* 加载模版后直接填入搜索框，也可将搜索框内容保存为模版 */}
+              <PromptTemplateToolbar content={question} onContentChange={setQuestion} />
+            </div>
             <Textarea
               id="question"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder="请输入查询需求"
+              placeholder="请输入查询需求，或从模版加载"
               className="max-h-40 overflow-auto"
             />
           </div>
