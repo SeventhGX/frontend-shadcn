@@ -221,7 +221,7 @@ function MatchBadge({ result, crawlerType }: { result: SearchResult; crawlerType
 
 interface SearchResultTableProps {
   results: SearchResult[]
-  crawlerType: CrawlerType // 本次搜索使用的方式，决定匹配度列的展示，也作为“获取内容”的默认方式
+  crawlerType: CrawlerType // 本次搜索使用的方式，决定匹配度列的展示
 }
 
 /**
@@ -233,8 +233,8 @@ export function SearchResultTable({ results, crawlerType }: SearchResultTablePro
   const [rows, setRows] = useState<Record<number, RowState>>({})
   const [detailIndex, setDetailIndex] = useState<number | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
-  // “获取内容”的方式，表格内所有行共用
-  const [fetchCrawlerType, setFetchCrawlerType] = useState<CrawlerType>(crawlerType)
+  // “获取内容”的方式，表格内所有行共用；DeepSeek 获取文章的速度和效果均优于豆包，因此固定默认 DeepSeek，不跟随搜索方式
+  const [fetchCrawlerType, setFetchCrawlerType] = useState<CrawlerType>("deepseek")
   const controllersRef = useRef(new Map<number, AbortController>())
 
   useEffect(() => {

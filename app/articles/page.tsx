@@ -1,17 +1,21 @@
 "use client"
 
-import { newArticleByStream } from "@/features/article/api"
+import { newArticleByStream, type CrawlerType, type DeepSeekArticle, type DeepSeekStreamEvent } from "@/features/article/api"
 import { useState } from "react"
+import { toast } from "sonner"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { FileText, Send, Sparkle, ArrowUpDown } from "lucide-react"
+import { FileText, Sparkle, ArrowUpDown, Loader2 } from "lucide-react"
 import { AddArticle } from "@/app/articles/addArticle"
 import { AuthGuard } from "@/components/common/auth-guard"
+import { readSseStream } from "@/lib/sse"
+import { CrawlerSplitButton } from "@/app/search/crawlerSplitButton"
 
 export default function ArticlesPage() {
   const [url, setUrl] = useState("")
+  const [crawlerType, setCrawlerType] = useState<CrawlerType>("deepseek") // DeepSeek 获取文章的速度和效果均优于豆包，默认使用
+  const [progress, setProgress] = useState("") // DeepSeek 阶段提示
   const [reasoning_content, setReasoningContent] = useState("")
   const [content, setContent] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -21,124 +25,66 @@ export default function ArticlesPage() {
   const handleSubmit = async () => {
     try {
       setIsSubmitting(true)
-      setIsReasoning(true)
+      setIsReasoning(crawlerType === "doubao") // DeepSeek 分支没有推理过程
       setAccordionValue("reasoning")
       // 清空之前的内容
       setReasoningContent("")
       setContent("")
+      setProgress("")
 
-      const response = await newArticleByStream(url)
+      const response = await newArticleByStream(url, crawlerType)
 
-      // 获取流读取器
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-
-      if (!reader) {
-        throw new Error('无法获取流读取器')
+      if (crawlerType === "deepseek") {
+        // DeepSeek 分阶段返回事件，article 事件一次性返回完整文章，收到 error 事件即视为失败（即使随后收到 [DONE]）
+        const result: { article?: DeepSeekArticle; truncated: boolean; error?: string } = { truncated: false }
+        await readSseStream<DeepSeekStreamEvent>(response, (event) => {
+          switch (event.type) {
+            case "progress":
+              setProgress(event.message)
+              break
+            case "article":
+              result.article = event.data
+              result.truncated = event.analysis_truncated
+              break
+            case "error":
+              result.error = event.error.message
+              break
+          }
+        })
+        if (result.error) throw new Error(result.error)
+        if (!result.article) throw new Error("未返回文章内容")
+        // 序列化为与豆包一致的 JSON 文本，供展示及“保存文章”解析
+        setContent(JSON.stringify(result.article, null, 2))
+        if (result.truncated) {
+          toast.warning("正文过长，摘要仅覆盖已分析的部分，正文内容完整保留")
+        }
+        return
       }
 
-      let buffer = '' // 用于缓存不完整的行
       let hasReceivedContent = false // 用于跟踪是否已经接收到 content 数据
+      await readSseStream(response, (data) => {
+        // 根据字段类型更新对应的状态
+        if (data.reasoning_content !== undefined) {
+          setReasoningContent(prev => prev + data.reasoning_content)
+        }
 
-      while (true) {
-        const { done, value } = await reader.read()
-
-        if (done) break
-
-        // 解码数据块
-        buffer += decoder.decode(value, { stream: true })
-
-        // 按行分割
-        const lines = buffer.split('\n')
-
-        // 保留最后一个不完整的行
-        buffer = lines.pop() || ''
-
-        // 处理每一行
-        for (const line of lines) {
-          const trimmedLine = line.trim()
-          if (trimmedLine) {
-            // 移除 SSE 格式的 "data: " 前缀
-            let jsonStr = trimmedLine
-            if (trimmedLine.startsWith('data: ')) {
-              jsonStr = trimmedLine.substring(6)
-            }
-
-            // 检查是否为 SSE 终止标记
-            if (jsonStr === '[DONE]' || jsonStr.trim() === '[DONE]') {
-              console.log('SSE 流已完成')
-              continue
-            }
-
-            // 跳过空字符串
-            if (!jsonStr.trim()) {
-              continue
-            }
-
-            try {
-              const data = JSON.parse(jsonStr)
-
-              // 根据字段类型更新对应的状态
-              if (data.reasoning_content !== undefined) {
-                setReasoningContent(prev => prev + data.reasoning_content)
-                // console.log('Received reasoning_content:', data.reasoning_content)
-              }
-
-              if (data.content !== undefined) {
-                setContent(prev => prev + data.content)
-                // 只在第一次接收到 content 时切换状态
-                if (!hasReceivedContent) {
-                  hasReceivedContent = true
-                  setIsReasoning(false) // 推理完成，切换状态
-                  setAccordionValue(undefined) // 推理完成后自动折叠推理内容
-                }
-              }
-            } catch (parseError) {
-              console.warn('JSON 解析错误:', trimmedLine, parseError)
-            }
+        if (data.content !== undefined) {
+          setContent(prev => prev + data.content)
+          // 只在第一次接收到 content 时切换状态
+          if (!hasReceivedContent) {
+            hasReceivedContent = true
+            setIsReasoning(false) // 推理完成，切换状态
+            setAccordionValue(undefined) // 推理完成后自动折叠推理内容
           }
         }
-      }
-
-      // 处理最后剩余的缓冲区内容
-      if (buffer.trim()) {
-        // 移除 SSE 格式的 "data: " 前缀
-        let jsonStr = buffer.trim()
-        if (jsonStr.startsWith('data: ')) {
-          jsonStr = jsonStr.substring(6)
-        }
-
-        // 检查是否为 SSE 终止标记
-        if (jsonStr === '[DONE]' || jsonStr.trim() === '[DONE]') {
-          console.log('SSE 流已完成')
-        } else if (jsonStr.trim()) {
-          try {
-            const data = JSON.parse(jsonStr)
-            if (data.reasoning_content !== undefined) {
-              setReasoningContent(prev => prev + data.reasoning_content)
-            }
-            if (data.content !== undefined) {
-              setContent(prev => prev + data.content)
-              // 只在第一次接收到 content 时切换状态
-              if (!hasReceivedContent) {
-                hasReceivedContent = true
-                setIsReasoning(false) // 推理完成，切换状态
-                setAccordionValue(undefined) // 推理完成后自动折叠推理内容
-              }
-            }
-          } catch (parseError) {
-            console.warn('JSON 解析错误:', buffer, parseError)
-          }
-        }
-      }
-
-      // alert('文章获取成功！')
+      })
     } catch (error) {
       console.error('Error:', error)
-      alert('文章获取失败，请检查控制台错误信息。')
+      alert(`文章获取失败：${error instanceof Error && error.message ? error.message : '请检查控制台错误信息。'}`)
     } finally {
       setIsSubmitting(false)
       setIsReasoning(false) // 确保在任何情况下都能重置推理状态
+      setProgress("")
     }
   }
 
@@ -159,15 +105,18 @@ export default function ArticlesPage() {
           />
         </div>
 
-        <span className="flex gap-4">
-          <Button
+        <span className="flex items-center gap-4">
+          <CrawlerSplitButton
+            variant="outline"
+            crawlerType={crawlerType}
+            onCrawlerTypeChange={setCrawlerType}
+            menuLabel="获取方式"
             onClick={handleSubmit}
             disabled={!url || isSubmitting}
-            variant="outline"
           >
             <ArrowUpDown size={16} className="mr-1" />
             {isSubmitting ? "处理中..." : "获取文章内容"}
-          </Button>
+          </CrawlerSplitButton>
           <AddArticle
             initialData={content}
             onArticleAdded={(dataString) => {
@@ -175,6 +124,12 @@ export default function ArticlesPage() {
             }}
             isSubmitting={isSubmitting}
           />
+          {isSubmitting && progress && (
+            <span className="flex items-center gap-1 text-sm text-muted-foreground">
+              <Loader2 size={14} className="animate-spin" />
+              {progress}
+            </span>
+          )}
         </span>
 
       </div>
