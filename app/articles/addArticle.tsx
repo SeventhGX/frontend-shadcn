@@ -44,7 +44,12 @@ export const emptyArticle: ArticleFormData = {
 // 解析接口返回的文章 JSON 字符串（兼容被 ```json 代码块包裹的情况）
 export function parseArticleData(dataString: string): ArticleFormData {
   const jsonStr = dataString.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")
-  const parsedData = JSON.parse(jsonStr)
+  return toArticleFormData(JSON.parse(jsonStr))
+}
+
+// 将接口返回的文章对象转换为表单数据，缺失或为 null 的字段置为空
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function toArticleFormData(parsedData: Record<string, any>): ArticleFormData {
   return {
     title: parsedData.title || "",
     key_words: parsedData.key_words || "",

@@ -7,10 +7,11 @@ export interface SseChunk {
 /**
  * 逐行读取 SSE 流，并把每行解析出的 JSON 对象交给 onData 处理。
  * 兼容带 "data: " 前缀和不带前缀的行，自动跳过空行与 [DONE] 终止标记。
+ * 默认按豆包的增量格式解析，其他格式（如 DeepSeek 分阶段事件）可通过泛型指定。
  */
-export async function readSseStream(
+export async function readSseStream<T = SseChunk>(
   response: Response,
-  onData: (data: SseChunk) => void
+  onData: (data: T) => void
 ) {
   const reader = response.body?.getReader()
   if (!reader) {

@@ -21,11 +21,13 @@ export async function POST(request: NextRequest) {
     headers['Authorization'] = auth
   }
 
+  // 原样转发 Query 参数（url、crawler_type），客户端断开时同时取消后端请求
   const backendRes = await fetch(
-    `${backendBase}/articles/v1/url_stream?url=${encodeURIComponent(url)}`,
+    `${backendBase}/articles/v1/url_stream${request.nextUrl.search}`,
     {
       method: 'POST',
       headers,
+      signal: request.signal,
     },
   )
 

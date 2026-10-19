@@ -51,10 +51,56 @@ export async function maToHtml(mdStr: string) {
   )
 }
 
-export async function newArticleByStream(url: string) {
+// ==================== 流式搜索 / 文章提取的提供商 ====================
+
+/** search_stream 与 url_stream 支持的提供商，通过 Query 参数 crawler_type 切换，默认豆包 */
+export type CrawlerType = 'doubao' | 'deepseek'
+
+export const crawlerOptions: { value: CrawlerType; label: string }[] = [
+  { value: 'doubao', label: '豆包' },
+  { value: 'deepseek', label: 'DeepSeek' },
+]
+
+/** DeepSeek 搜索结果，原样保留官方 results 字段 */
+export interface DeepSeekSearchItem {
+  title: string
+  url: string
+  snippet: string
+  summary: string
+  content: string
+  rerank_score: number // 0～3，官方将 ≥1.5 视为优质结果
+  site_name: string | null
+  site_icon: string | null
+  date: string | null // UTC RFC 3339
+  authority: number // 0～4，-1 表示未知；≥3 为极权威结果
+}
+
+/** DeepSeek 提取的文章对象 */
+export interface DeepSeekArticle {
+  title: string
+  key_words: string
+  publish_time: string | null
+  content: string
+  summary: string
+  url: string
+}
+
+/**
+ * DeepSeek 分支的 SSE 事件：每条 data 都是完整对象，不做增量拼接。
+ * 收到 [DONE] 不代表成功，需以是否出现 error 事件为准。
+ */
+export type DeepSeekStreamEvent =
+  | { type: 'progress'; provider: 'deepseek'; stage: string; message: string; query?: string }
+  | { type: 'search_results'; provider: 'deepseek'; query: string; data: DeepSeekSearchItem[] }
+  | { type: 'article'; provider: 'deepseek'; analysis_truncated: boolean; data: DeepSeekArticle }
+  | { type: 'error'; provider: 'deepseek'; error: { code: string; message: string; status_code?: number } }
+
+export async function newArticleByStream(url: string, crawlerType: CrawlerType = 'doubao', signal?: AbortSignal) {
+  // url 本身可能含 ?、& 等字符，统一交给 URLSearchParams 编码
+  const params = new URLSearchParams({ url, crawler_type: crawlerType })
   return fetcher(
-    `/articles/v1/url_stream?url=${encodeURIComponent(url)}`,
-    { method: 'POST' }
+    `/articles/v1/url_stream?${params}`,
+    { method: 'POST', signal }
   )
 }
 
@@ -71,15 +117,16 @@ export async function chatByStream(body: {}) {
   )
 }
 
-export async function searchByStream(body: {}) {
+export async function searchByStream(body: {}, crawlerType: CrawlerType = 'doubao', signal?: AbortSignal) {
   return fetcher(
-    `/articles/v1/search_stream`,
+    `/articles/v1/search_stream?crawler_type=${crawlerType}`,
     {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      signal,
     }
   )
 }

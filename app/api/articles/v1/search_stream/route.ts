@@ -17,12 +17,14 @@ export async function POST(request: NextRequest) {
 
   const body = await request.text()
 
+  // 原样转发 Query 参数（如 crawler_type），客户端断开时同时取消后端请求
   const backendRes = await fetch(
-    `${backendBase}/articles/v1/search_stream`,
+    `${backendBase}/articles/v1/search_stream${request.nextUrl.search}`,
     {
       method: 'POST',
       headers,
       body,
+      signal: request.signal,
     },
   )
 
