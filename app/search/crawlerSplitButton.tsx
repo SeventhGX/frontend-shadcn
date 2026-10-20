@@ -19,7 +19,7 @@ interface CrawlerSplitButtonProps {
   crawlerType: CrawlerType
   onCrawlerTypeChange: (value: CrawlerType) => void
   onClick: () => void
-  disabled?: boolean
+  disabled?: boolean // 仅作用于左侧主按钮，下拉框始终可用
   variant?: ComponentProps<typeof Button>["variant"]
   size?: ComponentProps<typeof Button>["size"]
   className?: string // 作用于左侧主按钮
@@ -29,7 +29,7 @@ interface CrawlerSplitButtonProps {
 
 /**
  * 按钮 + 下拉框组合：左侧按钮以当前选中的方式直接调用接口，右侧下拉框切换豆包 / DeepSeek。
- * 下拉框只切换方式，不会触发调用。
+ * 下拉框只切换方式，不会触发调用，因此不受 disabled 影响，始终可以切换（切换只影响下一次调用）。
  */
 export function CrawlerSplitButton({
   crawlerType,
@@ -62,7 +62,6 @@ export function CrawlerSplitButton({
             size={size}
             // 去掉与主按钮相邻一侧的圆角和边框，组合成一个整体
             className={cn("rounded-l-none gap-1", variant === "outline" ? "border-l-0" : "border-l border-l-primary-foreground/30")}
-            disabled={disabled}
             aria-label={menuLabel}
           >
             {currentLabel}
