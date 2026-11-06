@@ -20,6 +20,15 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## DeepSeek search
+
+The search page groups DeepSeek SSE events by `call_index`, appending calls in
+event order instead of replacing earlier results. Each tab shows its query,
+result count, progress, empty state, or call-specific error. Failed calls do not
+stop subsequent calls, and their errors remain visible after the stream ends.
+Switching tabs preserves article extraction, edits, and save state. Starting a
+new search clears all tabs; Doubao's incremental result display is unchanged.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

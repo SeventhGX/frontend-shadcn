@@ -85,15 +85,23 @@ export interface DeepSeekArticle {
   url: string
 }
 
+/** 搜索调用信息；规划阶段及文章提取事件不携带这些字段 */
+export interface DeepSeekSearchCall {
+  call_index: number
+  total_calls: number
+  tool_call_id: string
+  query?: string
+}
+
 /**
  * DeepSeek 分支的 SSE 事件：每条 data 都是完整对象，不做增量拼接。
- * 收到 [DONE] 不代表成功，需以是否出现 error 事件为准。
+ * 搜索结果按调用追加，单次调用错误不终止后续调用；[DONE] 不会清除错误状态。
  */
 export type DeepSeekStreamEvent =
-  | { type: 'progress'; provider: 'deepseek'; stage: string; message: string; query?: string }
-  | { type: 'search_results'; provider: 'deepseek'; query: string; data: DeepSeekSearchItem[] }
+  | ({ type: 'progress'; provider: 'deepseek'; stage: string; message: string } & Partial<DeepSeekSearchCall>)
+  | ({ type: 'search_results'; provider: 'deepseek'; query: string; data: DeepSeekSearchItem[] } & DeepSeekSearchCall)
   | { type: 'article'; provider: 'deepseek'; analysis_truncated: boolean; data: DeepSeekArticle }
-  | { type: 'error'; provider: 'deepseek'; error: { code: string; message: string; status_code?: number } }
+  | ({ type: 'error'; provider: 'deepseek'; error: { code: string; message: string; status_code?: number | null } } & Partial<DeepSeekSearchCall>)
 
 export async function newArticleByStream(url: string, crawlerType: CrawlerType = 'doubao', signal?: AbortSignal) {
   // url 本身可能含 ?、& 等字符，统一交给 URLSearchParams 编码
